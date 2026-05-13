@@ -9,7 +9,7 @@ export function GoogleLoginButton({ onClick }: GoogleLoginButtonProps) {
   return (
     <Button type="button" variant="outline" className="w-full bg-white" onClick={onClick}>
       <Chrome className="h-4 w-4" />
-      Continue with Google
+      Đăng nhập bằng Google
     </Button>
   );
 }

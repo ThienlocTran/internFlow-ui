@@ -1,52 +1,117 @@
-import { useNavigate, useLocation } from "react-router-dom";
+import { useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
-import { ArrowRight, ShieldCheck } from "lucide-react";
+import { ArrowLeft, ArrowRight, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useAuthStore } from "@/store/auth-store";
 import { GoogleLoginButton } from "@/features/auth/components/GoogleLoginButton";
 import { loginSchema, type LoginFormValues } from "@/features/auth/schemas/login.schema";
+import { profileSchema, type ProfileFormValues } from "@/features/auth/schemas/profile.schema";
+import { createProfile, getUsers } from "@/services/user.service";
+
+const GOOGLE_AUTH_URL = import.meta.env.VITE_GOOGLE_AUTH_URL as string | undefined;
 
 export function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { loginWithGoogle, loginWithEmail, loginAsDemo } = useAuthStore();
+  const setSession = useAuthStore((state) => state.setSession);
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [profileEmail, setProfileEmail] = useState<string | null>(null);
   const from = (location.state as { from?: { pathname: string } } | null)?.from?.pathname ?? "/dashboard";
 
-  const form = useForm<LoginFormValues>({
+  const loginForm = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: { email: "" },
   });
 
-  const finishLogin = () => {
-    loginWithGoogle();
+  const profileForm = useForm<ProfileFormValues>({
+    resolver: zodResolver(profileSchema),
+    values: {
+      email: profileEmail ?? "",
+      fullName: "",
+      studentCode: "",
+      studentClass: "",
+      school: "",
+      phone: "",
+    },
+  });
+
+  const loginByEmail = async (email: string) => {
+    setLoginError(null);
+    let users;
+    try {
+      users = await getUsers();
+    } catch {
+      throw new Error("Không kết nối được backend. Hãy kiểm tra backend đã chạy và CORS đã bật cho localhost:5173.");
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const user = users.find((item) => item.email.toLowerCase() === normalizedEmail);
+    if (!user) {
+      setProfileEmail(normalizedEmail);
+      profileForm.reset({
+        email: normalizedEmail,
+        fullName: "",
+        studentCode: "",
+        studentClass: "",
+        school: "",
+        phone: "",
+      });
+      return;
+    }
+
+    setSession(user);
     navigate(from, { replace: true });
   };
 
-  const onSubmit = (values: LoginFormValues) => {
-    loginWithEmail(values.email);
-    navigate(from, { replace: true });
+  const handleGoogleLogin = () => {
+    setLoginError(null);
+    if (GOOGLE_AUTH_URL) {
+      window.location.href = GOOGLE_AUTH_URL;
+      return;
+    }
+    setLoginError("Google OAuth chưa được cấu hình ở backend. Tạm thời hãy nhập Gmail để đăng nhập hoặc tạo hồ sơ.");
+  };
+
+  const handleLoginSubmit = async (values: LoginFormValues) => {
+    try {
+      await loginByEmail(values.email);
+    } catch (error) {
+      setLoginError(error instanceof Error ? error.message : "Không thể đăng nhập");
+    }
+  };
+
+  const handleCreateProfile = async (values: ProfileFormValues) => {
+    try {
+      const user = await createProfile(values);
+      setSession(user);
+      navigate(from, { replace: true });
+    } catch (error) {
+      setLoginError(error instanceof Error ? error.message : "Không thể tạo hồ sơ");
+    }
   };
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(15,23,42,0.10),_transparent_36rem),linear-gradient(180deg,_#f8fafc_0%,_#eef2f7_100%)] px-4 py-10">
       <div className="mx-auto flex min-h-[calc(100vh-5rem)] w-full max-w-6xl items-center justify-center">
-        <div className="grid w-full gap-8 lg:grid-cols-[1fr_460px] lg:items-center">
+        <div className="grid w-full gap-8 lg:grid-cols-[1fr_500px] lg:items-center">
           <section className="hidden lg:block">
             <div className="inline-flex items-center gap-2 rounded-full border bg-white px-3 py-1 text-sm text-muted-foreground shadow-sm">
               <ShieldCheck className="h-4 w-4 text-emerald-600" />
-              Flexible internship attendance
+              Quản lý ca thực tập linh động
             </div>
             <h1 className="mt-6 max-w-2xl text-5xl font-semibold tracking-normal text-slate-950">
-              InternFlow keeps shifts, proof, and progress in one clean workspace.
+              InternFlow giúp sinh viên điểm danh và tự động hóa hồ sơ thực tập.
             </h1>
             <p className="mt-5 max-w-xl text-base leading-7 text-muted-foreground">
-              Built for flexible checkin, team leader quota, image proof, and weekly attendance tracking.
+              Mỗi sinh viên dùng Gmail riêng. Nếu chưa có hồ sơ, hệ thống sẽ yêu cầu nhập thông tin một lần để phục vụ
+              điểm danh, báo cáo và gửi mail cuối ca.
             </p>
             <div className="mt-8 grid max-w-xl grid-cols-3 gap-3">
-              {["Google login", "Quota rules", "Team dashboard"].map((item) => (
+              {["Gmail riêng", "Hồ sơ một lần", "Dữ liệu đúng role"].map((item) => (
                 <div key={item} className="rounded-lg border bg-white p-4 text-sm font-medium shadow-sm">
                   {item}
                 </div>
@@ -59,53 +124,77 @@ export function LoginPage() {
               <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-slate-950 text-sm font-semibold text-white">
                 IF
               </div>
-              <CardTitle className="text-2xl">Sign in to InternFlow</CardTitle>
-              <CardDescription>Your admin email is already mapped for InternFlow access.</CardDescription>
+              <CardTitle className="text-2xl">{profileEmail ? "Tạo hồ sơ sinh viên" : "Đăng nhập InternFlow"}</CardTitle>
+              <CardDescription>
+                {profileEmail
+                  ? "Email này chưa có hồ sơ. Nhập thông tin một lần để hệ thống tự động quản lý về sau."
+                  : "Sinh viên đăng nhập bằng Gmail của mình. Admin và nhóm trưởng dùng email đã được cấp quyền."}
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
-              <GoogleLoginButton onClick={finishLogin} />
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <span className="w-full border-t" />
-                </div>
-                <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-white px-2 text-muted-foreground">Demo mode</span>
-                </div>
-              </div>
-              <form className="space-y-3" onSubmit={form.handleSubmit(onSubmit)}>
-                <div>
-                  <Input placeholder="student@school.edu.vn" {...form.register("email")} />
-                  {form.formState.errors.email && (
-                    <p className="mt-2 text-sm text-destructive">{form.formState.errors.email.message}</p>
+              {!profileEmail ? (
+                <>
+                  <GoogleLoginButton onClick={handleGoogleLogin} />
+                  <div className="relative">
+                    <div className="absolute inset-0 flex items-center">
+                      <span className="w-full border-t" />
+                    </div>
+                    <div className="relative flex justify-center text-xs uppercase">
+                      <span className="bg-white px-2 text-muted-foreground">Hoặc nhập Gmail</span>
+                    </div>
+                  </div>
+                  <form className="space-y-3" onSubmit={loginForm.handleSubmit(handleLoginSubmit)}>
+                    <div>
+                      <Input placeholder="ten.sinhvien@gmail.com" {...loginForm.register("email")} />
+                      {loginForm.formState.errors.email && (
+                        <p className="mt-2 text-sm text-destructive">{loginForm.formState.errors.email.message}</p>
+                      )}
+                    </div>
+                    {loginError && <p className="rounded-md bg-red-50 p-3 text-sm text-red-700">{loginError}</p>}
+                    <Button className="w-full" type="submit">
+                      Tiếp tục
+                      <ArrowRight className="h-4 w-4" />
+                    </Button>
+                  </form>
+                </>
+              ) : (
+                <form className="space-y-3" onSubmit={profileForm.handleSubmit(handleCreateProfile)}>
+                  <Input readOnly className="bg-slate-100" {...profileForm.register("email")} />
+                  <Input placeholder="Họ và tên" {...profileForm.register("fullName")} />
+                  {profileForm.formState.errors.fullName && (
+                    <p className="text-sm text-destructive">{profileForm.formState.errors.fullName.message}</p>
                   )}
-                </div>
-                <Button className="w-full" type="submit">
-                  Continue as intern
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
-              </form>
-              <div className="grid grid-cols-2 gap-3">
-                <Button
-                  variant="secondary"
-                  type="button"
-                  onClick={() => {
-                    loginAsDemo("TEAM_LEADER");
-                    navigate("/dashboard", { replace: true });
-                  }}
-                >
-                  Team leader
-                </Button>
-                <Button
-                  variant="secondary"
-                  type="button"
-                  onClick={() => {
-                    loginAsDemo("ADMIN");
-                    navigate("/dashboard", { replace: true });
-                  }}
-                >
-                  Admin
-                </Button>
-              </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Input placeholder="Mã số sinh viên" {...profileForm.register("studentCode")} />
+                    <Input placeholder="Lớp" {...profileForm.register("studentClass")} />
+                  </div>
+                  <Input placeholder="Trường" {...profileForm.register("school")} />
+                  <Input placeholder="Số điện thoại" {...profileForm.register("phone")} />
+                  {Object.values(profileForm.formState.errors)[0]?.message && (
+                    <p className="rounded-md bg-red-50 p-3 text-sm text-red-700">
+                      {Object.values(profileForm.formState.errors)[0]?.message}
+                    </p>
+                  )}
+                  {loginError && <p className="rounded-md bg-red-50 p-3 text-sm text-red-700">{loginError}</p>}
+                  <div className="grid gap-3 sm:grid-cols-[auto_1fr]">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        setProfileEmail(null);
+                        setLoginError(null);
+                      }}
+                    >
+                      <ArrowLeft className="h-4 w-4" />
+                      Quay lại
+                    </Button>
+                    <Button type="submit">
+                      Tạo hồ sơ và vào app
+                      <ArrowRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </form>
+              )}
             </CardContent>
           </Card>
         </div>

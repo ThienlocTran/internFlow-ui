@@ -1,5 +1,5 @@
 const data = [62, 75, 48, 83, 69, 91, 77];
-const labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const labels = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"];
 
 export function StatisticsChart() {
   return (
@@ -10,7 +10,7 @@ export function StatisticsChart() {
             <div
               className="w-full rounded-md bg-slate-950 transition-all"
               style={{ height: `${value}%` }}
-              aria-label={`${labels[index]} attendance ${value}%`}
+              aria-label={`Điểm danh ${labels[index]} ${value}%`}
             />
           </div>
           <span className="text-xs text-muted-foreground">{labels[index]}</span>

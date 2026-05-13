@@ -3,8 +3,11 @@ import {
   BarChart3,
   CalendarDays,
   ClipboardCheck,
+  Database,
+  FileCheck2,
   LayoutDashboard,
   ShieldCheck,
+  SlidersHorizontal,
   UsersRound,
   X,
 } from "lucide-react";
@@ -26,17 +29,30 @@ type NavItem = {
 };
 
 const navItems: NavItem[] = [
-  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { label: "Attendance", href: "/attendance", icon: ClipboardCheck },
-  { label: "Schedule", href: "/schedule", icon: CalendarDays },
-  { label: "Team", href: "/team", icon: UsersRound, roles: ["TEAM_LEADER", "ADMIN", "MANAGER"] },
-  { label: "Admin", href: "/admin", icon: ShieldCheck, roles: ["ADMIN", "MANAGER"] },
-  { label: "Reports", href: "/reports", icon: BarChart3, roles: ["ADMIN", "MANAGER"] },
+  { label: "Tổng quan cá nhân", href: "/dashboard", icon: LayoutDashboard, roles: ["INTERN"] },
+  { label: "Điểm danh của tôi", href: "/attendance", icon: ClipboardCheck, roles: ["INTERN"] },
+  { label: "Lịch đăng ký", href: "/schedule", icon: CalendarDays, roles: ["INTERN"] },
+  { label: "Tổng quan nhóm", href: "/dashboard", icon: LayoutDashboard, roles: ["TEAM_LEADER"] },
+  { label: "Thành viên nhóm", href: "/team", icon: UsersRound, roles: ["TEAM_LEADER"] },
+  { label: "Tổng quan quản trị", href: "/dashboard", icon: ShieldCheck, roles: ["ADMIN", "MANAGER"] },
+  { label: "Người dùng & nhóm", href: "/admin", icon: UsersRound, roles: ["ADMIN", "MANAGER"] },
+  { label: "Kiểm tra điểm danh", href: "/attendance", icon: FileCheck2, roles: ["ADMIN", "MANAGER"] },
+  { label: "Ca & sức chứa", href: "/schedule", icon: Database, roles: ["ADMIN", "MANAGER"] },
+  { label: "Chính sách thực tập", href: "/team", icon: SlidersHorizontal, roles: ["ADMIN", "MANAGER"] },
+  { label: "Báo cáo", href: "/reports", icon: BarChart3, roles: ["ADMIN", "MANAGER"] },
 ];
 
 export function Sidebar({ open, onClose }: SidebarProps) {
   const user = useAuthStore((state) => state.user);
   const visibleItems = navItems.filter((item) => !item.roles || (user && item.roles.includes(user.role)));
+  const isAdmin = user?.role === "ADMIN" || user?.role === "MANAGER";
+  const isLeader = user?.role === "TEAM_LEADER";
+  const workspaceLabel = isAdmin ? "Khu quản trị" : isLeader ? "Khu nhóm trưởng" : "Khu sinh viên";
+  const policyText = isAdmin
+    ? "Quản lý người dùng, ca, sức chứa, báo cáo và kiểm tra điểm danh."
+    : isLeader
+      ? "Nhóm trưởng quản lý nhóm, không cần quota thực tập."
+      : "Sinh viên thường 6 buổi/tuần. Đủ 6 ca tối sẽ được cộng 1 ca bonus.";
 
   return (
     <>
@@ -57,10 +73,10 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             </div>
             <div>
               <p className="text-sm font-semibold">InternFlow</p>
-              <p className="text-xs text-muted-foreground">Shift workspace</p>
+              <p className="text-xs text-muted-foreground">{workspaceLabel}</p>
             </div>
           </div>
-          <Button variant="ghost" size="icon" className="lg:hidden" onClick={onClose} aria-label="Close sidebar">
+          <Button variant="ghost" size="icon" className="lg:hidden" onClick={onClose} aria-label="Đóng menu">
             <X className="h-5 w-5" />
           </Button>
         </div>
@@ -85,10 +101,8 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         </nav>
 
         <div className="rounded-lg border bg-slate-50 p-4">
-          <p className="text-sm font-medium">Quota policy</p>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            Interns max 2 shifts per day. Team leaders max 3. Each shift allows up to 9 people.
-          </p>
+          <p className="text-sm font-medium">Quy định thực tập</p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">{policyText}</p>
         </div>
       </aside>
     </>

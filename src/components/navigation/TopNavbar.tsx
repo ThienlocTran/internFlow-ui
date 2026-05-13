@@ -13,15 +13,15 @@ export function TopNavbar({ onMenuClick }: TopNavbarProps) {
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b bg-background/85 px-4 backdrop-blur-xl lg:px-8">
-      <Button variant="ghost" size="icon" className="lg:hidden" onClick={onMenuClick} aria-label="Open sidebar">
+      <Button variant="ghost" size="icon" className="lg:hidden" onClick={onMenuClick} aria-label="Mở menu">
         <Menu className="h-5 w-5" />
       </Button>
       <div className="relative hidden flex-1 md:block">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input className="max-w-md bg-white pl-9" placeholder="Search attendance, teams, reports..." />
+        <Input className="max-w-md bg-white pl-9" placeholder="Tìm điểm danh, nhóm, báo cáo..." />
       </div>
       <div className="ml-auto flex items-center gap-3">
-        <Button variant="outline" size="icon" aria-label="Notifications">
+        <Button variant="outline" size="icon" aria-label="Thông báo">
           <Bell className="h-4 w-4" />
         </Button>
         <div className="hidden items-center gap-3 rounded-lg border bg-white px-3 py-2 sm:flex">
@@ -35,7 +35,7 @@ export function TopNavbar({ onMenuClick }: TopNavbarProps) {
             </Badge>
           </div>
         </div>
-        <Button variant="ghost" size="icon" onClick={logout} aria-label="Logout">
+        <Button variant="ghost" size="icon" onClick={logout} aria-label="Đăng xuất">
           <LogOut className="h-4 w-4" />
         </Button>
       </div>

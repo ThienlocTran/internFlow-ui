@@ -1,26 +1,33 @@
-import type { DashboardMetric, RecentAttendance } from "@/types/dashboard";
+import type { DashboardMetric } from "@/types/dashboard";
+import type { RolePolicy, Shift, User } from "@/types/api";
+import { getRolePolicies } from "@/services/role-policy.service";
+import { getShifts } from "@/services/shift.service";
+import { getUsers } from "@/services/user.service";
 
 export type DashboardSummary = {
   metrics: DashboardMetric[];
-  weeklyProgress: number;
-  quotaProgress: number;
-  recentAttendance: RecentAttendance[];
+  users: User[];
+  shifts: Shift[];
+  rolePolicies: RolePolicy[];
 };
 
 export async function getDashboardSummary(): Promise<DashboardSummary> {
+  const [users, shifts, rolePolicies] = await Promise.all([getUsers(), getShifts(), getRolePolicies()]);
+
   return {
     metrics: [
-      { label: "Completed shifts", value: "38", helper: "Company attendance", trend: "+6 this week" },
-      { label: "Weekly progress", value: "5 / 6", helper: "Target shifts", trend: "83% complete" },
-      { label: "Remaining shifts", value: "22", helper: "Before internship sign-off", trend: "On track" },
-      { label: "Attendance rate", value: "94%", helper: "Checked out successfully", trend: "+4.2%" },
+      { label: "Người dùng", value: String(users.length), helper: "Tài khoản trong hệ thống", trend: "Dữ liệu thật" },
+      { label: "Ca đang mở", value: String(shifts.length), helper: "Ca có thể điểm danh", trend: "Tối đa 9 bạn/ca" },
+      { label: "Chính sách vai trò", value: String(rolePolicies.length), helper: "Quota theo quyền", trend: "Đang áp dụng" },
+      {
+        label: "Sức chứa/ngày",
+        value: String(shifts.reduce((total, shift) => total + shift.maxParticipants, 0)),
+        helper: "Tổng slot các ca",
+        trend: "Từ cấu hình ca",
+      },
     ],
-    weeklyProgress: 83,
-    quotaProgress: 63,
-    recentAttendance: [
-      { id: "1", shift: "Ca 2", date: "May 12, 2026", status: "CHECKED_OUT", proof: "2 images" },
-      { id: "2", shift: "Ca 1", date: "May 11, 2026", status: "CHECKED_OUT", proof: "1 image" },
-      { id: "3", shift: "Ca 3", date: "May 10, 2026", status: "CHECKED_IN", proof: "2 images" },
-    ],
+    users,
+    shifts,
+    rolePolicies,
   };
 }
