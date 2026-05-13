@@ -11,8 +11,25 @@ import { GoogleLoginButton } from "@/features/auth/components/GoogleLoginButton"
 import { loginSchema, type LoginFormValues } from "@/features/auth/schemas/login.schema";
 import { profileSchema, type ProfileFormValues } from "@/features/auth/schemas/profile.schema";
 import { createProfile, getUsers } from "@/services/user.service";
+import { loginWithGoogle } from "@/services/auth.service";
 
-const GOOGLE_AUTH_URL = import.meta.env.VITE_GOOGLE_AUTH_URL as string | undefined;
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
+
+declare global {
+  interface Window {
+    google?: {
+      accounts: {
+        id: {
+          initialize: (config: {
+            client_id: string;
+            callback: (response: { credential?: string }) => void;
+          }) => void;
+          prompt: () => void;
+        };
+      };
+    };
+  }
+}
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -20,6 +37,7 @@ export function LoginPage() {
   const setSession = useAuthStore((state) => state.setSession);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [profileEmail, setProfileEmail] = useState<string | null>(null);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const from = (location.state as { from?: { pathname: string } } | null)?.from?.pathname ?? "/dashboard";
 
   const loginForm = useForm<LoginFormValues>({
@@ -67,13 +85,58 @@ export function LoginPage() {
     navigate(from, { replace: true });
   };
 
-  const handleGoogleLogin = () => {
+  const loadGoogleScript = () =>
+    new Promise<void>((resolve, reject) => {
+      if (window.google?.accounts?.id) {
+        resolve();
+        return;
+      }
+      const existingScript = document.querySelector<HTMLScriptElement>('script[src="https://accounts.google.com/gsi/client"]');
+      if (existingScript) {
+        existingScript.addEventListener("load", () => resolve(), { once: true });
+        existingScript.addEventListener("error", () => reject(new Error("Không tải được Google login.")), { once: true });
+        return;
+      }
+      const script = document.createElement("script");
+      script.src = "https://accounts.google.com/gsi/client";
+      script.async = true;
+      script.defer = true;
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error("Không tải được Google login."));
+      document.head.appendChild(script);
+    });
+
+  const handleGoogleLogin = async () => {
     setLoginError(null);
-    if (GOOGLE_AUTH_URL) {
-      window.location.href = GOOGLE_AUTH_URL;
+    if (!GOOGLE_CLIENT_ID) {
+      setLoginError("Chưa cấu hình Google Client ID. Hãy thêm VITE_GOOGLE_CLIENT_ID trong file .env của frontend.");
       return;
     }
-    setLoginError("Google OAuth chưa được cấu hình ở backend. Tạm thời hãy nhập Gmail để đăng nhập hoặc tạo hồ sơ.");
+    try {
+      setGoogleLoading(true);
+      await loadGoogleScript();
+      window.google?.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: async (response) => {
+          try {
+            if (!response.credential) {
+              throw new Error("Google không trả về token đăng nhập.");
+            }
+            const user = await loginWithGoogle(response.credential);
+            setSession(user, response.credential);
+            navigate(from, { replace: true });
+          } catch (error) {
+            setLoginError(error instanceof Error ? error.message : "Không thể đăng nhập Google.");
+          } finally {
+            setGoogleLoading(false);
+          }
+        },
+      });
+      window.google?.accounts.id.prompt();
+    } catch (error) {
+      setGoogleLoading(false);
+      setLoginError(error instanceof Error ? error.message : "Không thể mở Google login.");
+    }
   };
 
   const handleLoginSubmit = async (values: LoginFormValues) => {
@@ -134,7 +197,7 @@ export function LoginPage() {
             <CardContent className="space-y-5">
               {!profileEmail ? (
                 <>
-                  <GoogleLoginButton onClick={handleGoogleLogin} />
+                  <GoogleLoginButton onClick={handleGoogleLogin} disabled={googleLoading} />
                   <div className="relative">
                     <div className="absolute inset-0 flex items-center">
                       <span className="w-full border-t" />

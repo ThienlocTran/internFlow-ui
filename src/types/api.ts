@@ -106,6 +106,14 @@ export type ScheduleRegistration = {
   createdAt: string;
 };
 
+export type ScheduleCapacity = {
+  scheduleDate: string;
+  shiftId: string;
+  registeredCount: number;
+  maxParticipants: number;
+  full: boolean;
+};
+
 export type AttendanceAudit = {
   attendanceId: string;
   shiftName: string;

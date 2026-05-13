@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { AlertTriangle, Camera, CheckCircle2, Clock3, Eye, ImageUp, Loader2, UploadCloud } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +10,7 @@ import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { ErrorState } from "@/components/common/ErrorState";
 import { getShifts } from "@/services/shift.service";
 import { addAttendanceImage, checkin, checkout, getAttendances } from "@/services/attendance.service";
+import { getUserSchedule } from "@/services/schedule.service";
 import { uploadImage } from "@/services/upload.service";
 import { getCohorts, getCohortStudents, getStudentDetail } from "@/services/cohort.service";
 import { useAuthStore } from "@/store/auth-store";
@@ -289,7 +291,8 @@ function AdminAttendanceReviewPage() {
 function InternAttendancePage() {
   const queryClient = useQueryClient();
   const user = useAuthStore((state) => state.user);
-  const attendanceDate = today();
+  const [searchParams] = useSearchParams();
+  const attendanceDate = searchParams.get("date") ?? today();
   const [selectedShiftId, setSelectedShiftId] = useState<string | null>(null);
   const [files, setFiles] = useState<Record<SlotKey, File | undefined>>({});
   const [message, setMessage] = useState<string | null>(null);
@@ -301,11 +304,22 @@ function InternAttendancePage() {
     queryFn: () => getAttendances(user!.id, attendanceDate),
     enabled: Boolean(user?.id),
   });
+  const registeredScheduleQuery = useQuery({
+    queryKey: ["schedule", user?.id, attendanceDate, attendanceDate],
+    queryFn: () => getUserSchedule(user!.id, attendanceDate, attendanceDate),
+    enabled: Boolean(user?.id),
+  });
 
   const shifts = shiftsQuery.data ?? [];
+  const registeredShiftIds = new Set(
+    (registeredScheduleQuery.data ?? [])
+      .filter((item) => item.status === "REGISTERED")
+      .map((item) => item.shift.id),
+  );
+  const registeredShifts = shifts.filter((shift) => registeredShiftIds.has(shift.id));
   const selectedShift = useMemo(
-    () => shifts.find((shift) => shift.id === selectedShiftId) ?? shifts[0],
-    [selectedShiftId, shifts],
+    () => registeredShifts.find((shift) => shift.id === selectedShiftId) ?? registeredShifts[0],
+    [selectedShiftId, registeredShifts],
   );
   const currentAttendance = selectedAttendance(attendancesQuery.data, selectedShift?.id ?? null);
   const personalSlots = selectedShift ? getPersonalIntervalSlots(selectedShift) : [];
@@ -314,6 +328,9 @@ function InternAttendancePage() {
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!user || !selectedShift) throw new Error("Bạn cần đăng nhập và chọn ca.");
+      if (!registeredShiftIds.has(selectedShift.id)) {
+        throw new Error("Bạn cần đăng ký ca này trước khi điểm danh.");
+      }
       const checkinPersonal = files["checkin-personal"];
       if (!checkinPersonal) throw new Error("Ảnh TimeMark vào ca là bắt buộc.");
 
@@ -400,7 +417,7 @@ function InternAttendancePage() {
     },
   });
 
-  if (shiftsQuery.isLoading || attendancesQuery.isLoading) {
+  if (shiftsQuery.isLoading || attendancesQuery.isLoading || registeredScheduleQuery.isLoading) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
         <LoadingSpinner className="h-8 w-8" />
@@ -465,7 +482,7 @@ function InternAttendancePage() {
 
       <Card className="bg-white/90">
         <CardHeader>
-          <CardTitle>Chọn ca hôm nay</CardTitle>
+          <CardTitle>Chọn ca đã đăng ký</CardTitle>
           <CardDescription>Ngày điểm danh: {attendanceDate}</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-4">
@@ -473,9 +490,10 @@ function InternAttendancePage() {
             <button
               key={shift.id}
               type="button"
+              disabled={!registeredShiftIds.has(shift.id)}
               className={`rounded-lg border p-4 text-left transition ${
                 selectedShift?.id === shift.id ? "border-slate-950 bg-slate-950 text-white" : "bg-white hover:bg-slate-50"
-              }`}
+              } ${!registeredShiftIds.has(shift.id) ? "cursor-not-allowed opacity-50" : ""}`}
               onClick={() => setSelectedShiftId(shift.id)}
             >
               <p className="font-semibold">{shift.name}</p>
@@ -483,10 +501,19 @@ function InternAttendancePage() {
                 {shift.startTime.slice(0, 5)} - {shift.endTime.slice(0, 5)}
               </p>
               <p className={selectedShift?.id === shift.id ? "mt-2 text-xs text-slate-200" : "mt-2 text-xs text-muted-foreground"}>
-                Tối đa {shift.maxParticipants} bạn
+                {registeredShiftIds.has(shift.id) ? "Đã đăng ký" : "Chưa đăng ký"}
               </p>
             </button>
           ))}
+          {registeredShifts.length === 0 && (
+            <div className="col-span-full rounded-lg border border-dashed bg-slate-50 p-8 text-center">
+              <p className="font-medium">Bạn chưa đăng ký ca nào cho ngày này</p>
+              <p className="mt-2 text-sm text-muted-foreground">Hãy đăng ký lịch trước, sau đó quay lại điểm danh.</p>
+              <Button asChild className="mt-4">
+                <Link to={`/schedule?date=${attendanceDate}`}>Đăng ký ca</Link>
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 

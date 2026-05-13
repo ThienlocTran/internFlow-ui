@@ -3,13 +3,14 @@ import { Button } from "@/components/ui/button";
 
 type GoogleLoginButtonProps = {
   onClick: () => void;
+  disabled?: boolean;
 };
 
-export function GoogleLoginButton({ onClick }: GoogleLoginButtonProps) {
+export function GoogleLoginButton({ onClick, disabled }: GoogleLoginButtonProps) {
   return (
-    <Button type="button" variant="outline" className="w-full bg-white" onClick={onClick}>
+    <Button type="button" variant="outline" className="w-full bg-white" onClick={onClick} disabled={disabled}>
       <Chrome className="h-4 w-4" />
-      Đăng nhập bằng Google
+      {disabled ? "Đang mở Google..." : "Đăng nhập bằng Google"}
     </Button>
   );
 }

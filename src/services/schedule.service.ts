@@ -1,5 +1,5 @@
 import { apiRequest } from "@/api/http";
-import type { ScheduleRegistration } from "@/types/api";
+import type { ScheduleCapacity, ScheduleRegistration } from "@/types/api";
 
 export type ScheduleRegistrationPayload = {
   userId: string;
@@ -19,4 +19,14 @@ export function getUserSchedule(userId: string, startDate: string, endDate: stri
   return apiRequest<ScheduleRegistration[]>(
     `/schedules?userId=${userId}&startDate=${startDate}&endDate=${endDate}`,
   );
+}
+
+export function getScheduleCapacity(startDate: string, endDate: string) {
+  return apiRequest<ScheduleCapacity[]>(`/schedules/capacity?startDate=${startDate}&endDate=${endDate}`);
+}
+
+export function cancelSchedule(registrationId: string) {
+  return apiRequest<ScheduleRegistration>(`/schedules/${registrationId}`, {
+    method: "DELETE",
+  });
 }
