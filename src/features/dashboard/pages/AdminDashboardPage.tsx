@@ -1,4 +1,5 @@
 import { AlertTriangle, BarChart3, Database, FileDown, ShieldCheck, UsersRound } from "lucide-react";
+import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,6 +7,7 @@ import { DashboardCard } from "@/components/dashboard/DashboardCard";
 import { ErrorState } from "@/components/common/ErrorState";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { useDashboardSummary } from "@/features/dashboard/hooks/use-dashboard-summary";
+import { downloadCsv } from "@/utils/export-csv";
 
 export function AdminDashboardPage() {
   const { data, isLoading, error } = useDashboardSummary();
@@ -27,6 +29,22 @@ export function AdminDashboardPage() {
   const admins = data.users.filter((user) => user.role === "ADMIN" || user.role === "MANAGER").length;
   const totalCapacity = data.shifts.reduce((total, shift) => total + shift.maxParticipants, 0);
   const standardPolicy = data.rolePolicies.find((policy) => policy.role === "INTERN");
+  const exportUsers = () => {
+    downloadCsv(
+      "internflow-users.csv",
+      ["Họ tên", "Email", "MSSV", "Lớp", "Trường", "Khóa", "Vai trò", "Trạng thái"],
+      data.users.map((user) => [
+        user.fullName,
+        user.email,
+        user.studentCode,
+        user.studentClass,
+        user.school,
+        user.cohort?.name,
+        user.role,
+        user.active ? "Đang hoạt động" : "Tạm khóa",
+      ]),
+    );
+  };
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
@@ -40,13 +58,15 @@ export function AdminDashboardPage() {
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
-            <Button className="bg-white text-slate-950 hover:bg-slate-100">
+            <Button className="bg-white text-slate-950 hover:bg-slate-100" onClick={exportUsers}>
               <FileDown className="h-4 w-4" />
               Xuất báo cáo
             </Button>
-            <Button variant="outline" className="border-white/20 bg-white/10 text-white hover:bg-white/15">
-              <ShieldCheck className="h-4 w-4" />
-              Chính sách
+            <Button asChild variant="outline" className="border-white/20 bg-white/10 text-white hover:bg-white/15">
+              <Link to="/team">
+                <ShieldCheck className="h-4 w-4" />
+                Chính sách
+              </Link>
             </Button>
           </div>
         </div>

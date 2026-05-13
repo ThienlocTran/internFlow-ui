@@ -1,4 +1,5 @@
 import { CalendarPlus, CheckCircle2, ClipboardCheck, Clock3, FileClock, Target } from "lucide-react";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -39,13 +40,17 @@ export function InternDashboardPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
-          <Button>
-            <CheckCircle2 className="h-4 w-4" />
-            Điểm danh
+          <Button asChild>
+            <Link to="/attendance">
+              <CheckCircle2 className="h-4 w-4" />
+              Điểm danh
+            </Link>
           </Button>
-          <Button variant="outline" className="bg-white">
-            <CalendarPlus className="h-4 w-4" />
-            Đăng ký ca
+          <Button asChild variant="outline" className="bg-white">
+            <Link to="/schedule">
+              <CalendarPlus className="h-4 w-4" />
+              Đăng ký ca
+            </Link>
           </Button>
         </div>
       </section>

@@ -1,6 +1,5 @@
-import { AlertTriangle, CalendarCheck2, CheckCircle2, ClipboardList, UsersRound } from "lucide-react";
+import { AlertTriangle, CalendarCheck2, CheckCircle2, UsersRound } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DashboardCard } from "@/components/dashboard/DashboardCard";
 import { EmptyState } from "@/components/common/EmptyState";
@@ -36,16 +35,6 @@ export function TeamLeaderDashboardPage() {
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
               Nhóm trưởng vừa điểm danh cá nhân vừa theo dõi thành viên. Trang này chỉ hiển thị dữ liệu thật từ API.
             </p>
-          </div>
-          <div className="flex flex-wrap gap-3">
-            <Button>
-              <CheckCircle2 className="h-4 w-4" />
-              Xác nhận nhóm
-            </Button>
-            <Button variant="outline" className="bg-white">
-              <ClipboardList className="h-4 w-4" />
-              Xem vắng mặt
-            </Button>
           </div>
         </div>
       </section>

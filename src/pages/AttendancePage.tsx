@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Camera, CheckCircle2, Clock3, ImageUp, Loader2, UploadCloud } from "lucide-react";
+import { AlertTriangle, Camera, CheckCircle2, Clock3, Eye, ImageUp, Loader2, UploadCloud } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,9 +10,11 @@ import { ErrorState } from "@/components/common/ErrorState";
 import { getShifts } from "@/services/shift.service";
 import { addAttendanceImage, checkin, checkout, getAttendances } from "@/services/attendance.service";
 import { uploadImage } from "@/services/upload.service";
+import { getCohorts, getCohortStudents, getStudentDetail } from "@/services/cohort.service";
 import { useAuthStore } from "@/store/auth-store";
 import type { Attendance, AttendanceImagePhase, AttendanceImageType, Shift } from "@/types/api";
 import { getGroupPhotoSlots, getPersonalIntervalSlots } from "@/utils/attendance-photo-rules";
+import { downloadCsv } from "@/utils/export-csv";
 
 type SlotKey = "checkin-personal" | "checkin-group" | "checkout-personal" | "checkout-group" | string;
 
@@ -61,7 +63,230 @@ function ImagePicker({
   );
 }
 
-export function AttendancePage() {
+function AdminAttendanceReviewPage() {
+  const [selectedCohortId, setSelectedCohortId] = useState<string>("");
+  const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
+  const cohortsQuery = useQuery({ queryKey: ["cohorts"], queryFn: getCohorts });
+  const studentsQuery = useQuery({
+    queryKey: ["cohort-students", selectedCohortId],
+    queryFn: () => getCohortStudents(selectedCohortId),
+    enabled: Boolean(selectedCohortId),
+  });
+  const detailQuery = useQuery({
+    queryKey: ["student-detail", selectedStudentId],
+    queryFn: () => getStudentDetail(selectedStudentId!),
+    enabled: Boolean(selectedStudentId),
+  });
+
+  if (cohortsQuery.isLoading) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center">
+        <LoadingSpinner className="h-8 w-8" />
+      </div>
+    );
+  }
+
+  if (cohortsQuery.error || !cohortsQuery.data) {
+    return <ErrorState message="Không tải được danh sách khóa thực tập." />;
+  }
+
+  const students = studentsQuery.data ?? [];
+  const exportAttendanceAudit = () => {
+    if (!detailQuery.data) return;
+    downloadCsv(
+      `diem-danh-${detailQuery.data.student.fullName}.csv`,
+      ["Ngày", "Ca", "Ảnh cá nhân", "Thiếu ảnh cá nhân", "Ảnh nhóm", "Thiếu ảnh nhóm", "Trang báo cáo", "Thiếu báo cáo"],
+      detailQuery.data.attendances.map((item) => [
+        item.attendanceDate,
+        item.shiftName,
+        `${item.uploadedPersonalImages}/${item.requiredPersonalImages}`,
+        item.missingPersonalImages,
+        `${item.uploadedGroupImages}/${item.requiredGroupImages}`,
+        item.missingGroupImages,
+        `${item.submittedReportPages}/${item.requiredReportPages}`,
+        item.enoughReportPages ? "Không" : "Có",
+      ]),
+    );
+  };
+
+  return (
+    <div className="mx-auto max-w-7xl space-y-6">
+      <div>
+        <h1 className="text-3xl font-semibold tracking-normal">Kiểm tra điểm danh</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Admin chỉ xem và kiểm tra minh chứng. Upload ảnh thuộc về sinh viên.
+        </p>
+      </div>
+
+      <Card className="bg-white/90">
+        <CardHeader>
+          <CardTitle>Chọn khóa cần kiểm tra</CardTitle>
+          <CardDescription>Lọc sinh viên theo khóa thực tập để tránh lẫn dữ liệu giữa các đợt.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {cohortsQuery.data.map((cohort) => (
+            <button
+              key={cohort.id}
+              type="button"
+              className={`rounded-lg border p-4 text-left transition ${
+                selectedCohortId === cohort.id ? "border-slate-950 bg-slate-950 text-white" : "bg-white hover:bg-slate-50"
+              }`}
+              onClick={() => {
+                setSelectedCohortId(cohort.id);
+                setSelectedStudentId(null);
+              }}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <p className="font-semibold">{cohort.name}</p>
+                <Badge tone={cohort.active ? "success" : "muted"}>{cohort.active ? "Đang mở" : "Đã đóng"}</Badge>
+              </div>
+              <p className={selectedCohortId === cohort.id ? "mt-2 text-sm text-slate-200" : "mt-2 text-sm text-muted-foreground"}>
+                {cohort.code} · {cohort.startDate}
+              </p>
+            </button>
+          ))}
+        </CardContent>
+      </Card>
+
+      {selectedCohortId && (
+        <Card className="bg-white/90">
+          <CardHeader>
+            <CardTitle>Sinh viên trong khóa</CardTitle>
+            <CardDescription>Bấm chi tiết để xem từng buổi, ảnh đã nộp và cảnh báo thiếu minh chứng.</CardDescription>
+          </CardHeader>
+          <CardContent className="overflow-x-auto">
+            {studentsQuery.isLoading ? (
+              <div className="flex min-h-32 items-center justify-center">
+                <LoadingSpinner className="h-7 w-7" />
+              </div>
+            ) : (
+              <table className="w-full min-w-[760px] text-sm">
+                <thead>
+                  <tr className="border-b text-left text-muted-foreground">
+                    <th className="py-3 font-medium">Họ tên</th>
+                    <th className="py-3 font-medium">Email</th>
+                    <th className="py-3 font-medium">MSSV</th>
+                    <th className="py-3 font-medium">Lớp</th>
+                    <th className="py-3 font-medium">Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {students.map((student) => (
+                    <tr key={student.id} className="border-b last:border-0">
+                      <td className="py-4 font-medium">{student.fullName}</td>
+                      <td className="py-4 text-muted-foreground">{student.email}</td>
+                      <td className="py-4">{student.studentCode || "Chưa có"}</td>
+                      <td className="py-4">{student.studentClass || "Chưa có"}</td>
+                      <td className="py-4">
+                        <Button size="sm" variant="outline" onClick={() => setSelectedStudentId(student.id)}>
+                          <Eye className="h-4 w-4" />
+                          Chi tiết
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {selectedStudentId && (
+        <Card className="bg-white/90">
+          <CardHeader>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <CardTitle>Chi tiết minh chứng</CardTitle>
+                <CardDescription>Thuật toán kiểm tra số ảnh theo ca và 8 trang báo cáo mỗi ca.</CardDescription>
+              </div>
+              <Button variant="outline" disabled={!detailQuery.data} onClick={exportAttendanceAudit}>
+                Xuất CSV
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {detailQuery.isLoading && (
+              <div className="flex min-h-32 items-center justify-center">
+                <LoadingSpinner className="h-7 w-7" />
+              </div>
+            )}
+            {detailQuery.data && (
+              <div className="space-y-4">
+                <div className="grid gap-3 md:grid-cols-3">
+                  <div className="rounded-lg border bg-slate-50 p-4">
+                    <p className="text-sm text-muted-foreground">Sinh viên</p>
+                    <p className="mt-1 font-semibold">{detailQuery.data.student.fullName}</p>
+                  </div>
+                  <div className="rounded-lg border bg-slate-50 p-4">
+                    <p className="text-sm text-muted-foreground">Đã hoàn thành</p>
+                    <p className="mt-1 font-semibold">{detailQuery.data.completedCompanyShifts} ca</p>
+                  </div>
+                  <div className="rounded-lg border bg-slate-50 p-4">
+                    <p className="text-sm text-muted-foreground">Còn thiếu</p>
+                    <p className="mt-1 font-semibold">{detailQuery.data.remainingCompanyShifts} ca</p>
+                  </div>
+                </div>
+
+                {detailQuery.data.attendances.map((attendance) => (
+                  <div key={attendance.attendanceId} className="rounded-lg border p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="font-semibold">
+                          {attendance.attendanceDate} · {attendance.shiftName}
+                        </p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          Cá nhân {attendance.uploadedPersonalImages}/{attendance.requiredPersonalImages} · Nhóm{" "}
+                          {attendance.uploadedGroupImages}/{attendance.requiredGroupImages} · Báo cáo{" "}
+                          {attendance.submittedReportPages}/{attendance.requiredReportPages} trang
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Badge tone={attendance.enoughImages ? "success" : "warning"}>
+                          {attendance.enoughImages ? "Đủ ảnh" : "Thiếu ảnh"}
+                        </Badge>
+                        <Badge tone={attendance.enoughReportPages ? "success" : "warning"}>
+                          {attendance.enoughReportPages ? "Đủ báo cáo" : "Thiếu báo cáo"}
+                        </Badge>
+                      </div>
+                    </div>
+                    {(!attendance.enoughImages || !attendance.enoughReportPages) && (
+                      <div className="mt-3 flex items-start gap-2 rounded-md bg-amber-50 p-3 text-sm text-amber-800">
+                        <AlertTriangle className="mt-0.5 h-4 w-4" />
+                        <span>
+                          Thiếu {attendance.missingPersonalImages} ảnh cá nhân, {attendance.missingGroupImages} ảnh nhóm và{" "}
+                          {Math.max(0, attendance.requiredReportPages - attendance.submittedReportPages)} trang báo cáo.
+                        </span>
+                      </div>
+                    )}
+                    {attendance.images.length > 0 && (
+                      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                        {attendance.images.map((image) => (
+                          <a key={image.id} href={image.imageUrl} target="_blank" rel="noreferrer" className="group block">
+                            <img
+                              src={image.imageUrl}
+                              alt={`${image.imageType} ${image.expectedTime}`}
+                              className="aspect-video w-full rounded-md border object-cover transition group-hover:opacity-80"
+                            />
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {image.imageType} · {image.expectedTime}
+                            </p>
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function InternAttendancePage() {
   const queryClient = useQueryClient();
   const user = useAuthStore((state) => state.user);
   const attendanceDate = today();
@@ -410,4 +635,10 @@ export function AttendancePage() {
       )}
     </div>
   );
+}
+
+export function AttendancePage() {
+  const user = useAuthStore((state) => state.user);
+  const isAdmin = user?.role === "ADMIN" || user?.role === "MANAGER";
+  return isAdmin ? <AdminAttendanceReviewPage /> : <InternAttendancePage />;
 }

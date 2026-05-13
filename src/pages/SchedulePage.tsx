@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { CalendarDays, CheckCircle2, Info, Loader2 } from "lucide-react";
+import { CalendarDays, CheckCircle2, Database, Download, Info, Loader2 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +11,7 @@ import { getShifts } from "@/services/shift.service";
 import { getUserSchedule, registerSchedule } from "@/services/schedule.service";
 import { useAuthStore } from "@/store/auth-store";
 import type { Shift } from "@/types/api";
+import { downloadCsv } from "@/utils/export-csv";
 
 function today() {
   return new Date().toISOString().slice(0, 10);
@@ -41,7 +42,94 @@ function isAdjacent(shifts: Shift[]) {
   return sorted.every((shift, index) => index === 0 || sorted[index - 1].endTime === shift.startTime);
 }
 
-export function SchedulePage() {
+function AdminShiftCapacityPage() {
+  const shiftsQuery = useQuery({ queryKey: ["shifts"], queryFn: getShifts });
+
+  if (shiftsQuery.isLoading) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center">
+        <LoadingSpinner className="h-8 w-8" />
+      </div>
+    );
+  }
+
+  if (shiftsQuery.error || !shiftsQuery.data) {
+    return <ErrorState message="Không tải được danh sách ca từ backend." />;
+  }
+
+  const shifts = shiftsQuery.data;
+  const exportShifts = () => {
+    downloadCsv(
+      "internflow-shifts.csv",
+      ["Mã ca", "Tên ca", "Bắt đầu", "Kết thúc", "Nhóm", "Sức chứa", "Trạng thái"],
+      shifts.map((shift) => [
+        shift.code,
+        shift.name,
+        shift.startTime.slice(0, 5),
+        shift.endTime.slice(0, 5),
+        getShiftGroup(shift.code),
+        shift.maxParticipants,
+        shift.active ? "Đang mở" : "Tắt",
+      ]),
+    );
+  };
+
+  return (
+    <div className="mx-auto max-w-6xl space-y-6">
+      <div className="flex flex-col justify-between gap-3 md:flex-row md:items-end">
+        <div>
+          <h1 className="text-3xl font-semibold tracking-normal">Ca & sức chứa</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Admin theo dõi cấu hình ca. Sinh viên đăng ký ca ở giao diện sinh viên riêng.
+          </p>
+        </div>
+        <Button variant="outline" onClick={exportShifts}>
+          <Download className="h-4 w-4" />
+          Xuất danh sách ca
+        </Button>
+      </div>
+
+      <Card className="overflow-hidden bg-white/90">
+        <div className="border-b bg-slate-950 p-6 text-white">
+          <div className="flex items-center gap-3">
+            <div className="rounded-lg bg-white/10 p-3">
+              <Database className="h-5 w-5" />
+            </div>
+            <div>
+              <CardTitle>Khung ca hiện tại</CardTitle>
+              <CardDescription className="text-slate-300">Mỗi ca đang giới hạn tối đa 9 sinh viên.</CardDescription>
+            </div>
+          </div>
+        </div>
+        <CardContent className="grid gap-4 p-6 md:grid-cols-2 xl:grid-cols-4">
+          {shifts.map((shift) => (
+            <div key={shift.id} className="rounded-lg border bg-white p-4 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-semibold">{shift.name}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">{shift.code}</p>
+                </div>
+                <Badge tone={shift.active ? "success" : "muted"}>{shift.active ? "Mở" : "Tắt"}</Badge>
+              </div>
+              <div className="mt-5 rounded-md bg-slate-50 p-3">
+                <p className="text-2xl font-semibold">
+                  {shift.startTime.slice(0, 5)} - {shift.endTime.slice(0, 5)}
+                </p>
+                <p className="mt-2 text-sm text-muted-foreground">{getShiftGroup(shift.code)}</p>
+              </div>
+              <div className="mt-4 flex items-center justify-between rounded-md border p-3">
+                <span className="text-sm text-muted-foreground">Sức chứa</span>
+                <span className="font-semibold">{shift.maxParticipants} bạn</span>
+              </div>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function InternSchedulePage() {
   const queryClient = useQueryClient();
   const user = useAuthStore((state) => state.user);
   const [selectedDate, setSelectedDate] = useState(today());
@@ -230,4 +318,10 @@ export function SchedulePage() {
       </Card>
     </div>
   );
+}
+
+export function SchedulePage() {
+  const user = useAuthStore((state) => state.user);
+  const isAdmin = user?.role === "ADMIN" || user?.role === "MANAGER";
+  return isAdmin ? <AdminShiftCapacityPage /> : <InternSchedulePage />;
 }

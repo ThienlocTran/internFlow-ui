@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { AlertTriangle, Eye, ShieldCheck, UserRound } from "lucide-react";
+import { AlertTriangle, Download, Eye, ShieldCheck, UserRound } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -9,6 +9,7 @@ import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { ErrorState } from "@/components/common/ErrorState";
 import { createCohort, getCohorts, getCohortStudents, getStudentDetail } from "@/services/cohort.service";
 import { getUsers } from "@/services/user.service";
+import { downloadCsv } from "@/utils/export-csv";
 
 function today() {
   return new Date().toISOString().slice(0, 10);
@@ -72,6 +73,23 @@ export function AdminPage() {
     () => cohortsQuery.data?.find((cohort) => cohort.id === selectedCohortId),
     [cohortsQuery.data, selectedCohortId],
   );
+  const exportVisibleUsers = () => {
+    downloadCsv(
+      selectedCohort ? `sinh-vien-${selectedCohort.code}.csv` : "nguoi-dung-internflow.csv",
+      ["Họ tên", "Email", "MSSV", "Lớp", "Trường", "SĐT", "Khóa", "Vai trò", "Trạng thái"],
+      (users ?? []).map((user) => [
+        user.fullName,
+        user.email,
+        user.studentCode,
+        user.studentClass,
+        user.school,
+        user.phone,
+        user.cohort?.name,
+        user.role,
+        user.active ? "Đang hoạt động" : "Tạm khóa",
+      ]),
+    );
+  };
 
   if (isLoading) {
     return (
@@ -170,8 +188,16 @@ export function AdminPage() {
 
       <Card className="bg-white/90">
         <CardHeader>
-          <CardTitle>{selectedCohort ? `Sinh viên trong ${selectedCohort.name}` : "Danh sách người dùng"}</CardTitle>
-          <CardDescription>Dữ liệu lấy từ API thật. Bấm “Chi tiết” để xem ảnh và tiến độ báo cáo.</CardDescription>
+          <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
+            <div>
+              <CardTitle>{selectedCohort ? `Sinh viên trong ${selectedCohort.name}` : "Danh sách người dùng"}</CardTitle>
+              <CardDescription>Dữ liệu lấy từ API thật. Bấm “Chi tiết” để xem ảnh và tiến độ báo cáo.</CardDescription>
+            </div>
+            <Button variant="outline" onClick={exportVisibleUsers}>
+              <Download className="h-4 w-4" />
+              Xuất CSV
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="overflow-x-auto">
           <table className="w-full min-w-[900px] text-sm">
