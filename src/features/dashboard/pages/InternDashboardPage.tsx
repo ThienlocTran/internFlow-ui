@@ -36,7 +36,7 @@ export function InternDashboardPage() {
             Xin chào, {user?.fullName}
           </h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-            Theo dõi quy định ca, lịch đăng ký và điểm danh cá nhân. Các số liệu bên dưới lấy trực tiếp từ backend.
+            Quản lý lịch đăng ký, điểm danh và nhật ký thực tập trong một nơi rõ ràng.
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
@@ -59,8 +59,8 @@ export function InternDashboardPage() {
         <DashboardCard
           label="Ca đang mở"
           value={String(data.shifts.length)}
-          helper="Lấy từ API /shifts"
-          trend="Dữ liệu thật"
+          helper="Các khung giờ đang áp dụng"
+          trend="InternFlow"
           icon={ClipboardCheck}
         />
         <DashboardCard
@@ -111,13 +111,13 @@ export function InternDashboardPage() {
         <Card className="bg-white/90">
           <CardHeader>
             <CardTitle>Lịch sử điểm danh</CardTitle>
-            <CardDescription>Chưa có endpoint lấy lịch sử cá nhân.</CardDescription>
+            <CardDescription>Theo dõi tiến độ các ca đã tham gia.</CardDescription>
           </CardHeader>
           <CardContent>
             <EmptyState
               icon={FileClock}
-              title="Chưa có dữ liệu điểm danh"
-              description="Cần bổ sung API lịch sử điểm danh theo user để hiển thị số ca đã đi, ca còn thiếu và tiến độ thực tế."
+              title="Chưa có ca hoàn thành"
+              description="Khi bạn checkout ca đầu tiên, tiến độ thực tập sẽ được cập nhật tại đây."
             />
           </CardContent>
         </Card>

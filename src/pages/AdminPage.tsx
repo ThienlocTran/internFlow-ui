@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { AlertTriangle, Download, Eye, ShieldCheck, UserRound } from "lucide-react";
+import { Link, useSearchParams } from "react-router-dom";
+import { Download, Eye, ShieldCheck } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -7,9 +8,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { ErrorState } from "@/components/common/ErrorState";
-import { createCohort, getCohorts, getCohortStudents, getStudentDetail } from "@/services/cohort.service";
+import { createCohort, getCohorts, getCohortStudents } from "@/services/cohort.service";
 import { getUsers } from "@/services/user.service";
 import { downloadCsv } from "@/utils/export-csv";
+import { formatDateRange } from "@/utils/date-format";
 
 function today() {
   return new Date().toISOString().slice(0, 10);
@@ -17,8 +19,8 @@ function today() {
 
 export function AdminPage() {
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
   const [selectedCohortId, setSelectedCohortId] = useState<string>("");
-  const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [form, setForm] = useState({
     code: "",
     name: "",
@@ -37,11 +39,6 @@ export function AdminPage() {
     queryKey: ["cohort-students", selectedCohortId],
     queryFn: () => getCohortStudents(selectedCohortId),
     enabled: Boolean(selectedCohortId),
-  });
-  const studentDetailQuery = useQuery({
-    queryKey: ["student-detail", selectedStudentId],
-    queryFn: () => getStudentDetail(selectedStudentId!),
-    enabled: Boolean(selectedStudentId),
   });
 
   const createMutation = useMutation({
@@ -67,17 +64,33 @@ export function AdminPage() {
   });
 
   const users = selectedCohortId ? cohortStudentsQuery.data : usersQuery.data;
+  const searchType = searchParams.get("searchType") ?? "studentCode";
+  const searchKeyword = (searchParams.get("q") ?? "").trim().toLowerCase();
+  const filteredUsers = (users ?? []).filter((user) => {
+    if (!searchKeyword) return true;
+    const values: Record<string, string | undefined> = {
+      studentCode: user.studentCode,
+      studentName: user.fullName,
+      email: user.email,
+      class: user.studentClass,
+      cohortCode: user.cohort?.code,
+      cohortName: user.cohort?.name,
+    };
+    return (values[searchType] ?? "").toLowerCase().includes(searchKeyword);
+  });
+
   const isLoading = cohortsQuery.isLoading || usersQuery.isLoading || cohortStudentsQuery.isLoading;
   const hasError = cohortsQuery.error || usersQuery.error || cohortStudentsQuery.error;
   const selectedCohort = useMemo(
     () => cohortsQuery.data?.find((cohort) => cohort.id === selectedCohortId),
     [cohortsQuery.data, selectedCohortId],
   );
+
   const exportVisibleUsers = () => {
     downloadCsv(
       selectedCohort ? `sinh-vien-${selectedCohort.code}.csv` : "nguoi-dung-internflow.csv",
       ["Họ tên", "Email", "MSSV", "Lớp", "Trường", "SĐT", "Khóa", "Vai trò", "Trạng thái"],
-      (users ?? []).map((user) => [
+      filteredUsers.map((user) => [
         user.fullName,
         user.email,
         user.studentCode,
@@ -176,8 +189,7 @@ export function AdminPage() {
                     <Badge tone={cohort.active ? "success" : "muted"}>{cohort.active ? "Đang mở" : "Đã đóng"}</Badge>
                   </div>
                   <p className={selectedCohortId === cohort.id ? "mt-2 text-sm text-slate-200" : "mt-2 text-sm text-muted-foreground"}>
-                    {cohort.code} · {cohort.startDate}
-                    {cohort.endDate ? ` - ${cohort.endDate}` : ""}
+                    {cohort.code} · {formatDateRange(cohort.startDate, cohort.endDate)}
                   </p>
                 </button>
               ))}
@@ -191,7 +203,11 @@ export function AdminPage() {
           <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
             <div>
               <CardTitle>{selectedCohort ? `Sinh viên trong ${selectedCohort.name}` : "Danh sách người dùng"}</CardTitle>
-              <CardDescription>Dữ liệu lấy từ API thật. Bấm “Chi tiết” để xem ảnh và tiến độ báo cáo.</CardDescription>
+              <CardDescription>
+                {searchKeyword
+                  ? `Đang lọc theo từ khóa "${searchKeyword}".`
+                  : "Bấm “Chi tiết” để mở hồ sơ riêng của từng sinh viên."}
+              </CardDescription>
             </div>
             <Button variant="outline" onClick={exportVisibleUsers}>
               <Download className="h-4 w-4" />
@@ -199,153 +215,86 @@ export function AdminPage() {
             </Button>
           </div>
         </CardHeader>
-        <CardContent className="overflow-x-auto">
-          <table className="w-full min-w-[900px] text-sm">
-            <thead>
-              <tr className="border-b text-left text-muted-foreground">
-                <th className="py-3 font-medium">Họ tên</th>
-                <th className="py-3 font-medium">Email</th>
-                <th className="py-3 font-medium">MSSV</th>
-                <th className="py-3 font-medium">Lớp</th>
-                <th className="py-3 font-medium">Khóa</th>
-                <th className="py-3 font-medium">Vai trò</th>
-                <th className="py-3 font-medium">Thao tác</th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.map((user) => (
-                <tr key={user.id} className="border-b last:border-0">
-                  <td className="py-4 font-medium">{user.fullName}</td>
-                  <td className="py-4 text-muted-foreground">{user.email}</td>
-                  <td className="py-4">{user.studentCode || "Chưa có"}</td>
-                  <td className="py-4">{user.studentClass || "Chưa có"}</td>
-                  <td className="py-4">{user.cohort?.name || "Chưa gán khóa"}</td>
-                  <td className="py-4">
-                    <Badge tone={user.role === "ADMIN" || user.role === "MANAGER" ? "warning" : "muted"}>{user.role}</Badge>
-                  </td>
-                  <td className="py-4">
-                    <Button size="sm" variant="outline" onClick={() => setSelectedStudentId(user.id)}>
-                      <Eye className="h-4 w-4" />
-                      Chi tiết
-                    </Button>
-                  </td>
+        <CardContent>
+          <div className="space-y-3 md:hidden">
+            {filteredUsers.map((user) => (
+              <div key={user.id} className="rounded-lg border bg-slate-50 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium">{user.fullName}</p>
+                    <p className="mt-1 truncate text-sm text-muted-foreground">{user.email}</p>
+                  </div>
+                  <Badge tone={user.role === "ADMIN" || user.role === "MANAGER" ? "warning" : "muted"}>{user.role}</Badge>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                  <div className="rounded-md bg-white p-2">
+                    <p className="text-xs text-muted-foreground">MSSV</p>
+                    <p className="truncate font-medium">{user.studentCode || "Chưa có"}</p>
+                  </div>
+                  <div className="rounded-md bg-white p-2">
+                    <p className="text-xs text-muted-foreground">Lớp</p>
+                    <p className="truncate font-medium">{user.studentClass || "Chưa có"}</p>
+                  </div>
+                  <div className="col-span-2 rounded-md bg-white p-2">
+                    <p className="text-xs text-muted-foreground">Khóa</p>
+                    <p className="truncate font-medium">{user.cohort?.name || "Chưa gán khóa"}</p>
+                  </div>
+                </div>
+                <Button asChild size="sm" variant="outline" className="mt-3 w-full">
+                  <Link to={`/admin/students/${user.id}`}>
+                    <Eye className="h-4 w-4" />
+                    Chi tiết
+                  </Link>
+                </Button>
+              </div>
+            ))}
+          </div>
+
+          <div className="hidden overflow-x-auto md:block">
+            <table className="w-full min-w-[900px] text-sm">
+              <thead>
+                <tr className="border-b text-left text-muted-foreground">
+                  <th className="py-3 font-medium">Họ tên</th>
+                  <th className="py-3 font-medium">Email</th>
+                  <th className="py-3 font-medium">MSSV</th>
+                  <th className="py-3 font-medium">Lớp</th>
+                  <th className="py-3 font-medium">Khóa</th>
+                  <th className="py-3 font-medium">Vai trò</th>
+                  <th className="py-3 font-medium">Thao tác</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-          {users.length === 0 && (
+              </thead>
+              <tbody>
+                {filteredUsers.map((user) => (
+                  <tr key={user.id} className="border-b last:border-0">
+                    <td className="py-4 font-medium">{user.fullName}</td>
+                    <td className="py-4 text-muted-foreground">{user.email}</td>
+                    <td className="py-4">{user.studentCode || "Chưa có"}</td>
+                    <td className="py-4">{user.studentClass || "Chưa có"}</td>
+                    <td className="py-4">{user.cohort?.name || "Chưa gán khóa"}</td>
+                    <td className="py-4">
+                      <Badge tone={user.role === "ADMIN" || user.role === "MANAGER" ? "warning" : "muted"}>{user.role}</Badge>
+                    </td>
+                    <td className="py-4">
+                      <Button asChild size="sm" variant="outline">
+                        <Link to={`/admin/students/${user.id}`}>
+                          <Eye className="h-4 w-4" />
+                          Chi tiết
+                        </Link>
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {filteredUsers.length === 0 && (
             <div className="mt-6 rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
               <ShieldCheck className="mx-auto mb-3 h-8 w-8" />
-              Chưa có sinh viên trong khóa này.
+              Chưa có sinh viên trong phạm vi đang chọn.
             </div>
           )}
         </CardContent>
       </Card>
-
-      {selectedStudentId && (
-        <Card className="bg-white/90">
-          <CardHeader>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <CardTitle>Chi tiết sinh viên</CardTitle>
-                <CardDescription>Kiểm tra tổng ca, ảnh điểm danh và số trang báo cáo theo từng ca.</CardDescription>
-              </div>
-              <Button variant="outline" onClick={() => setSelectedStudentId(null)}>
-                Đóng
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {studentDetailQuery.isLoading && (
-              <div className="flex min-h-40 items-center justify-center">
-                <LoadingSpinner className="h-7 w-7" />
-              </div>
-            )}
-            {studentDetailQuery.data && (
-              <div className="space-y-5">
-                <div className="grid gap-3 md:grid-cols-4">
-                  <div className="rounded-lg border bg-slate-50 p-4">
-                    <p className="text-sm text-muted-foreground">Sinh viên</p>
-                    <p className="mt-1 font-semibold">{studentDetailQuery.data.student.fullName}</p>
-                  </div>
-                  <div className="rounded-lg border bg-slate-50 p-4">
-                    <p className="text-sm text-muted-foreground">Đã hoàn thành</p>
-                    <p className="mt-1 font-semibold">{studentDetailQuery.data.completedCompanyShifts} ca</p>
-                  </div>
-                  <div className="rounded-lg border bg-slate-50 p-4">
-                    <p className="text-sm text-muted-foreground">Còn thiếu</p>
-                    <p className="mt-1 font-semibold">{studentDetailQuery.data.remainingCompanyShifts} ca</p>
-                  </div>
-                  <div className="rounded-lg border bg-slate-50 p-4">
-                    <p className="text-sm text-muted-foreground">Yêu cầu</p>
-                    <p className="mt-1 font-semibold">
-                      {studentDetailQuery.data.requiredCompanyShifts} công ty + {studentDetailQuery.data.requiredHomeShifts} ở nhà
-                    </p>
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  {studentDetailQuery.data.attendances.map((attendance) => (
-                    <div key={attendance.attendanceId} className="rounded-lg border p-4">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                          <p className="font-semibold">
-                            {attendance.attendanceDate} · {attendance.shiftName}
-                          </p>
-                          <p className="mt-1 text-sm text-muted-foreground">
-                            Ảnh cá nhân {attendance.uploadedPersonalImages}/{attendance.requiredPersonalImages} · Ảnh nhóm{" "}
-                            {attendance.uploadedGroupImages}/{attendance.requiredGroupImages} · Báo cáo{" "}
-                            {attendance.submittedReportPages}/{attendance.requiredReportPages} trang
-                          </p>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          <Badge tone={attendance.enoughImages ? "success" : "warning"}>
-                            {attendance.enoughImages ? "Đủ ảnh" : "Thiếu ảnh"}
-                          </Badge>
-                          <Badge tone={attendance.enoughReportPages ? "success" : "warning"}>
-                            {attendance.enoughReportPages ? "Đủ báo cáo" : "Thiếu 8 trang"}
-                          </Badge>
-                        </div>
-                      </div>
-                      {(!attendance.enoughImages || !attendance.enoughReportPages) && (
-                        <div className="mt-3 flex items-start gap-2 rounded-md bg-amber-50 p-3 text-sm text-amber-800">
-                          <AlertTriangle className="mt-0.5 h-4 w-4" />
-                          <span>
-                            Thiếu {attendance.missingPersonalImages} ảnh cá nhân, {attendance.missingGroupImages} ảnh nhóm và{" "}
-                            {Math.max(0, attendance.requiredReportPages - attendance.submittedReportPages)} trang báo cáo.
-                          </span>
-                        </div>
-                      )}
-                      {attendance.images.length > 0 && (
-                        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                          {attendance.images.map((image) => (
-                            <a key={image.id} href={image.imageUrl} target="_blank" rel="noreferrer" className="group block">
-                              <img
-                                src={image.imageUrl}
-                                alt={`${image.imageType} ${image.expectedTime}`}
-                                className="aspect-video w-full rounded-md border object-cover transition group-hover:opacity-80"
-                              />
-                              <p className="mt-1 text-xs text-muted-foreground">
-                                {image.imageType} · {image.expectedTime}
-                              </p>
-                            </a>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                  {studentDetailQuery.data.attendances.length === 0 && (
-                    <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-                      <UserRound className="mx-auto mb-3 h-8 w-8" />
-                      Sinh viên này chưa có buổi điểm danh nào.
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }

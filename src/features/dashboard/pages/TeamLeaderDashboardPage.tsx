@@ -33,15 +33,15 @@ export function TeamLeaderDashboardPage() {
           <div>
             <h1 className="text-3xl font-semibold tracking-normal">Quản lý nhóm, {user?.fullName}</h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-              Nhóm trưởng vừa điểm danh cá nhân vừa theo dõi thành viên. Trang này chỉ hiển thị dữ liệu thật từ API.
+              Theo dõi thành viên, lịch tham gia và các trường hợp cần nhắc nhở trong nhóm.
             </p>
           </div>
         </div>
       </section>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <DashboardCard label="Người dùng hệ thống" value={String(data.users.length)} helper="API /users" trend="Dữ liệu thật" icon={UsersRound} />
-        <DashboardCard label="Ca đang mở" value={String(data.shifts.length)} helper="API /shifts" trend="9 bạn/ca" icon={CalendarCheck2} />
+        <DashboardCard label="Người dùng hệ thống" value={String(data.users.length)} helper="Tài khoản đang quản lý" trend="InternFlow" icon={UsersRound} />
+        <DashboardCard label="Ca đang mở" value={String(data.shifts.length)} helper="Khung giờ áp dụng" trend="9 bạn/ca" icon={CalendarCheck2} />
         <DashboardCard label="Tối đa/ngày" value={policy ? `${policy.maxShiftsPerDay} ca` : "Chưa có"} helper="Nhóm trưởng" trend="Theo chính sách" icon={AlertTriangle} />
         <DashboardCard label="Mục tiêu/tuần" value={policy ? `${policy.targetShiftsPerWeek} ca` : "Chưa có"} helper="Quota nhóm trưởng" trend="Theo chính sách" icon={CheckCircle2} />
       </section>
@@ -50,13 +50,13 @@ export function TeamLeaderDashboardPage() {
         <Card className="bg-white/90">
           <CardHeader>
             <CardTitle>Thành viên nhóm</CardTitle>
-            <CardDescription>Chưa có API lấy nhóm theo nhóm trưởng.</CardDescription>
+            <CardDescription>Danh sách thành viên và tiến độ thực tập của nhóm.</CardDescription>
           </CardHeader>
           <CardContent>
             <EmptyState
               icon={UsersRound}
-              title="Chưa có dữ liệu thành viên nhóm"
-              description="Cần endpoint lấy team của nhóm trưởng và danh sách thành viên để hiển thị tiến độ từng bạn."
+              title="Chưa có thành viên trong nhóm"
+              description="Khi admin gán sinh viên vào nhóm, danh sách và tiến độ từng bạn sẽ hiển thị tại đây."
             />
           </CardContent>
         </Card>
@@ -64,7 +64,7 @@ export function TeamLeaderDashboardPage() {
         <Card className="bg-white/90">
           <CardHeader>
             <CardTitle>Tình trạng sức chứa ca</CardTitle>
-            <CardDescription>Dữ liệu cấu hình ca hiện có.</CardDescription>
+            <CardDescription>Theo dõi sức chứa từng khung giờ.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {data.shifts.map((shift) => (

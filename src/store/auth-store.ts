@@ -6,6 +6,7 @@ type AuthState = {
   token: string | null;
   isAuthenticated: boolean;
   setSession: (user: User, token?: string) => void;
+  updateUser: (user: User) => void;
   logout: () => void;
 };
 
@@ -20,6 +21,10 @@ export const useAuthStore = create<AuthState>((set) => ({
     localStorage.setItem("internflow.user", JSON.stringify(user));
     localStorage.setItem("internflow.token", token);
     set({ user, token, isAuthenticated: true });
+  },
+  updateUser: (user) => {
+    localStorage.setItem("internflow.user", JSON.stringify(user));
+    set({ user, isAuthenticated: true });
   },
   logout: () => {
     localStorage.removeItem("internflow.user");

@@ -10,18 +10,25 @@ import { ErrorState } from "@/components/common/ErrorState";
 import { getShifts } from "@/services/shift.service";
 import { cancelSchedule, getScheduleCapacity, getUserSchedule, registerSchedule } from "@/services/schedule.service";
 import { useAuthStore } from "@/store/auth-store";
-import type { ScheduleCapacity, ScheduleRegistration, Shift } from "@/types/api";
+import type { ScheduleCapacity, ScheduleRegistration, Shift, User } from "@/types/api";
 import { downloadCsv } from "@/utils/export-csv";
+import { formatDate } from "@/utils/date-format";
 
 const dayNames = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ nhật"];
 
 function today() {
-  return new Date().toISOString().slice(0, 10);
+  return toDateInputValue(new Date());
+}
+
+function toDateInputValue(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function formatDisplayDate(dateText: string) {
-  const date = new Date(`${dateText}T00:00:00`);
-  return `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}`;
+  return formatDate(dateText);
 }
 
 function weekRange(dateText: string) {
@@ -32,7 +39,7 @@ function weekRange(dateText: string) {
   const days = Array.from({ length: 7 }, (_, index) => {
     const item = new Date(monday);
     item.setDate(monday.getDate() + index);
-    return item.toISOString().slice(0, 10);
+    return toDateInputValue(item);
   });
   return {
     start: days[0],
@@ -62,14 +69,30 @@ function capacityFor(capacities: ScheduleCapacity[] | undefined, date: string, s
   return capacities?.find((item) => item.scheduleDate === date && item.shiftId === shiftId);
 }
 
+function initials(user: User) {
+  const source = user.fullName || user.email;
+  return source
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(-2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+}
+
 function registrationsForDay(registrations: ScheduleRegistration[] | undefined, date: string) {
   return (registrations ?? []).filter((item) => item.scheduleDate === date && item.status === "REGISTERED");
 }
 
 function AdminShiftCapacityPage() {
+  const [selectedDate, setSelectedDate] = useState(today());
   const shiftsQuery = useQuery({ queryKey: ["shifts"], queryFn: getShifts });
+  const capacityQuery = useQuery({
+    queryKey: ["schedule-capacity-admin", selectedDate],
+    queryFn: () => getScheduleCapacity(selectedDate, selectedDate),
+  });
 
-  if (shiftsQuery.isLoading) {
+  if (shiftsQuery.isLoading || capacityQuery.isLoading) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
         <LoadingSpinner className="h-8 w-8" />
@@ -77,11 +100,11 @@ function AdminShiftCapacityPage() {
     );
   }
 
-  if (shiftsQuery.error || !shiftsQuery.data) {
+  if (shiftsQuery.error || !shiftsQuery.data || capacityQuery.error) {
     return <ErrorState message="Không tải được danh sách ca từ backend." />;
   }
 
-  const shifts = shiftsQuery.data;
+  const shifts = shiftsQuery.data.slice().sort((a, b) => shiftOrder(a) - shiftOrder(b));
   const exportShifts = () => {
     downloadCsv(
       "internflow-shifts.csv",
@@ -112,6 +135,24 @@ function AdminShiftCapacityPage() {
           Xuất danh sách ca
         </Button>
       </div>
+
+      <Card className="bg-white/90">
+        <CardContent className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="font-semibold">Xem đăng ký theo ngày</p>
+            <p className="mt-1 text-sm text-muted-foreground">Admin chọn ngày để xem từng ca đang có những ai.</p>
+          </div>
+          <label className="flex items-center gap-2 rounded-lg border bg-white px-3 py-2">
+            <CalendarDays className="h-4 w-4 text-muted-foreground" />
+            <input
+              type="date"
+              className="bg-transparent text-sm outline-none"
+              value={selectedDate}
+              onChange={(event) => setSelectedDate(event.target.value)}
+            />
+          </label>
+        </CardContent>
+      </Card>
 
       <Card className="overflow-hidden bg-white/90">
         <div className="border-b bg-slate-950 p-6 text-white">
@@ -149,6 +190,58 @@ function AdminShiftCapacityPage() {
           ))}
         </CardContent>
       </Card>
+
+      <Card className="bg-white/90">
+        <CardHeader>
+          <CardTitle>Danh sách sinh viên trong từng ca</CardTitle>
+          <CardDescription>Ngày {formatDisplayDate(selectedDate)} · mỗi ca tối đa 9 bạn.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 lg:grid-cols-2">
+          {shifts.map((shift) => {
+            const capacity = capacityFor(capacityQuery.data, selectedDate, shift.id);
+            const registeredCount = capacity?.registeredCount ?? 0;
+            const maxParticipants = capacity?.maxParticipants ?? shift.maxParticipants;
+            const participants = capacity?.participants ?? [];
+            const percent = Math.min(100, Math.round((registeredCount / Math.max(1, maxParticipants)) * 100));
+            return (
+              <div key={shift.id} className="rounded-xl border bg-white p-4 shadow-sm">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold">{shift.name}</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {shift.startTime.slice(0, 5)} - {shift.endTime.slice(0, 5)} · {getShiftGroup(shift.code)}
+                    </p>
+                  </div>
+                  <Badge tone={registeredCount >= maxParticipants ? "warning" : "muted"}>
+                    {registeredCount}/{maxParticipants} bạn
+                  </Badge>
+                </div>
+                <div className="mt-4 h-2 rounded-full bg-slate-100">
+                  <div className="h-full rounded-full bg-slate-950 transition-all" style={{ width: `${percent}%` }} />
+                </div>
+                <div className="mt-4 space-y-2">
+                  {participants.length > 0 ? participants.map((participant) => (
+                    <div key={participant.id} className="flex items-center gap-3 rounded-lg border bg-slate-50 p-3">
+                      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-slate-950 text-xs font-semibold text-white">
+                        {initials(participant)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium">{participant.fullName}</p>
+                        <p className="truncate text-xs text-muted-foreground">{participant.email}</p>
+                      </div>
+                      <Badge tone={participant.role === "TEAM_LEADER" ? "warning" : "muted"}>{participant.role}</Badge>
+                    </div>
+                  )) : (
+                    <div className="rounded-lg border border-dashed bg-slate-50 p-4 text-center text-sm text-muted-foreground">
+                      Chưa có ai đăng ký ca này.
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -181,7 +274,16 @@ function InternSchedulePage() {
   );
   const dayRegistrations = registrationsForDay(scheduleQuery.data, selectedDate);
   const selectedDayShiftIds = new Set(dayRegistrations.map((item) => item.shift.id));
-  const canSubmit = selectedShiftIds.length > 0 && selectedShiftIds.length <= 2 && isAdjacent(selectedShifts);
+  const registeredThisWeek = (scheduleQuery.data ?? []).filter((item) => item.status === "REGISTERED").length;
+  const weeklyLimit = user?.role === "TEAM_LEADER" ? 9 : 6;
+  const dailyLimit = user?.role === "TEAM_LEADER" ? 3 : 2;
+  const remainingThisWeek = Math.max(0, weeklyLimit - registeredThisWeek);
+  const canSubmit =
+    selectedShiftIds.length > 0
+    && selectedShiftIds.length <= dailyLimit
+    && dayRegistrations.length + selectedShiftIds.length <= dailyLimit
+    && selectedShiftIds.length <= remainingThisWeek
+    && isAdjacent(selectedShifts);
 
   const mutation = useMutation({
     mutationFn: () => {
@@ -261,7 +363,10 @@ function InternSchedulePage() {
       <Card className="bg-white/90">
         <CardHeader>
           <CardTitle>Tuần {formatDisplayDate(range.start)} - {formatDisplayDate(range.end)}</CardTitle>
-          <CardDescription>Bạn có thể đăng ký linh động theo từng ngày, nhưng một ngày tối đa 2 ca liền kề.</CardDescription>
+          <CardDescription>
+            Tuần này còn {remainingThisWeek}/{weeklyLimit} ca có thể đăng ký.
+          </CardDescription>
+          <CardDescription>Nhóm trưởng được tối đa 3 ca/ngày, 9 ca/tuần. Sinh viên thường tối đa 2 ca/ngày, 6 ca/tuần.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-7">
           {range.days.map((date, index) => {
@@ -300,7 +405,10 @@ function InternSchedulePage() {
               <CardTitle>Chọn ca cho {formatDisplayDate(selectedDate)}</CardTitle>
               <CardDescription>Ca 1 + Ca 2 hoặc Ca 3 + Ca 4 được xem là liền kề.</CardDescription>
             </div>
-            <Badge tone="muted">Đã đăng ký hôm nay: {dayRegistrations.length}/2</Badge>
+            <div className="flex flex-wrap gap-2">
+              <Badge tone="muted">Đã đăng ký hôm nay: {dayRegistrations.length}/{dailyLimit}</Badge>
+              <Badge tone={remainingThisWeek === 0 ? "warning" : "muted"}>Còn trong tuần: {remainingThisWeek}/{weeklyLimit}</Badge>
+            </div>
           </div>
         </div>
         <CardContent className="space-y-5 p-6">
@@ -311,16 +419,35 @@ function InternSchedulePage() {
               const capacity = capacityFor(capacityQuery.data, selectedDate, shift.id);
               const full = Boolean(capacity?.full);
               const disabled = full || registered;
+              const registeredCount = capacity?.registeredCount ?? 0;
+              const maxParticipants = capacity?.maxParticipants ?? shift.maxParticipants;
+              const participants = capacity?.participants ?? [];
+              const percent = Math.min(100, Math.round((registeredCount / maxParticipants) * 100));
               return (
                 <button
                   key={shift.id}
                   type="button"
                   disabled={disabled}
                   className={`rounded-lg border p-4 text-left transition ${
-                    selected ? "border-slate-950 bg-slate-950 text-white" : "bg-white hover:bg-slate-50"
+                    selected
+                      ? "border-slate-950 bg-slate-950 text-white"
+                      : full
+                        ? "border-amber-200 bg-amber-50/60"
+                        : "bg-white hover:bg-slate-50"
                   } ${disabled ? "cursor-not-allowed opacity-60" : ""}`}
                   onClick={() => toggleShift(shift)}
                 >
+                  <div className="mb-3 flex items-center gap-2">
+                    <div className={selected ? "h-2 flex-1 rounded-full bg-white/20" : "h-2 flex-1 rounded-full bg-slate-100"}>
+                      <div
+                        className={`h-full rounded-full ${full ? "bg-amber-500" : selected ? "bg-white" : "bg-slate-950"}`}
+                        style={{ width: `${percent}%` }}
+                      />
+                    </div>
+                    <span className={selected ? "text-xs font-semibold text-white" : "text-xs font-semibold text-slate-700"}>
+                      {registeredCount}/{maxParticipants}
+                    </span>
+                  </div>
                   <div className="flex items-center justify-between gap-3">
                     <p className="font-medium">{shift.name}</p>
                     <Badge tone={full ? "warning" : registered ? "success" : "muted"}>
@@ -331,16 +458,60 @@ function InternSchedulePage() {
                     {shift.startTime.slice(0, 5)} - {shift.endTime.slice(0, 5)}
                   </p>
                   <p className={selected ? "mt-2 text-sm text-slate-200" : "mt-2 text-sm"}>
-                    Đã đăng ký: {capacity?.registeredCount ?? 0}/{capacity?.maxParticipants ?? shift.maxParticipants}
+                    Đã đăng ký: {registeredCount}/{maxParticipants}
                   </p>
+                  <div className="mt-3">
+                    <p className={selected ? "text-xs font-medium text-slate-200" : "text-xs font-medium text-muted-foreground"}>
+                      Danh sách đã chọn
+                    </p>
+                    {participants.length > 0 ? (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {participants.slice(0, 5).map((participant) => (
+                          <span
+                            key={participant.id}
+                            className={`inline-flex max-w-full items-center gap-1 rounded-full px-2 py-1 text-xs ${
+                              selected ? "bg-white/10 text-white" : "bg-slate-100 text-slate-700"
+                            }`}
+                            title={`${participant.fullName} - ${participant.email}`}
+                          >
+                            <span className={`grid h-5 w-5 shrink-0 place-items-center rounded-full text-[10px] font-semibold ${
+                              selected ? "bg-white text-slate-950" : "bg-slate-950 text-white"
+                            }`}>
+                              {initials(participant)}
+                            </span>
+                            <span className="truncate">{participant.fullName || participant.email}</span>
+                          </span>
+                        ))}
+                        {participants.length > 5 && (
+                          <span className={`rounded-full px-2 py-1 text-xs ${selected ? "bg-white/10 text-white" : "bg-slate-100 text-slate-700"}`}>
+                            +{participants.length - 5} bạn
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <p className={selected ? "mt-2 text-xs text-slate-300" : "mt-2 text-xs text-muted-foreground"}>
+                        Chưa có ai chọn ca này.
+                      </p>
+                    )}
+                  </div>
                 </button>
               );
             })}
           </div>
 
-          {selectedShiftIds.length > 2 && (
+          {selectedShiftIds.length > dailyLimit && (
             <p className="rounded-md bg-red-50 p-3 text-sm text-red-700">
-              Bạn đang chọn quá 2 ca trong ngày. Hãy bỏ bớt một ca để tiếp tục.
+              Bạn đang chọn quá {dailyLimit} ca trong ngày. Hãy bỏ bớt ca để tiếp tục.
+            </p>
+          )}
+          {dayRegistrations.length + selectedShiftIds.length > dailyLimit && (
+            <p className="rounded-md bg-red-50 p-3 text-sm text-red-700">
+              Ngày này bạn đã có {dayRegistrations.length} ca. Vai trò của bạn chỉ được tối đa {dailyLimit} ca/ngày.
+            </p>
+          )}
+          {selectedShiftIds.length > remainingThisWeek && (
+            <p className="rounded-md bg-red-50 p-3 text-sm text-red-700">
+              Tuần này bạn chỉ còn {remainingThisWeek} ca có thể đăng ký. Muốn đổi lịch thì hãy rời một ca cũ trước.
             </p>
           )}
           {selectedShiftIds.length > 1 && !isAdjacent(selectedShifts) && (
@@ -350,7 +521,7 @@ function InternSchedulePage() {
           )}
           {notice && <p className={`rounded-md p-3 text-sm ${noticeClass}`}>{notice.text}</p>}
 
-          <Button disabled={!canSubmit || mutation.isPending} onClick={() => mutation.mutate()}>
+          <Button type="button" disabled={!canSubmit || mutation.isPending} onClick={() => mutation.mutate()}>
             {mutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
             Đăng ký ca đã chọn
           </Button>
@@ -361,7 +532,7 @@ function InternSchedulePage() {
         <CardHeader>
           <CardTitle>Lịch đã đăng ký trong tuần</CardTitle>
           <CardDescription>
-            Từ {range.start} đến {range.end}. Chỉ những ca đã đăng ký mới được điểm danh.
+            Từ {formatDisplayDate(range.start)} đến {formatDisplayDate(range.end)}. Chỉ những ca đã đăng ký mới được điểm danh.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -372,7 +543,7 @@ function InternSchedulePage() {
                 <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-white p-4">
                   <div>
                     <p className="font-medium">
-                      {item.scheduleDate} - {item.shift.name}
+                      {formatDisplayDate(item.scheduleDate)} - {item.shift.name}
                     </p>
                     <p className="mt-1 text-sm text-muted-foreground">
                       {item.shift.startTime.slice(0, 5)} - {item.shift.endTime.slice(0, 5)}
@@ -415,8 +586,8 @@ function InternSchedulePage() {
             <p className="mt-2 text-sm text-muted-foreground">Ca 1 + Ca 2 hoặc Ca 3 + Ca 4 là lựa chọn chuẩn.</p>
           </div>
           <div className="rounded-lg border bg-slate-50 p-4">
-            <p className="font-medium">Tối đa 2 ca/ngày</p>
-            <p className="mt-2 text-sm text-muted-foreground">Nếu cần trường hợp đặc biệt, hãy báo admin trước.</p>
+            <p className="font-medium">Giới hạn theo vai trò</p>
+            <p className="mt-2 text-sm text-muted-foreground">Sinh viên thường tối đa 2 ca/ngày, nhóm trưởng tối đa 3 ca/ngày.</p>
           </div>
           <div className="rounded-lg border bg-slate-50 p-4">
             <p className="font-medium">Ca đủ chỗ sẽ khóa</p>

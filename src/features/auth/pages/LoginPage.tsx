@@ -8,10 +8,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { useAuthStore } from "@/store/auth-store";
 import { GoogleLoginButton } from "@/features/auth/components/GoogleLoginButton";
-import { loginSchema, type LoginFormValues } from "@/features/auth/schemas/login.schema";
 import { profileSchema, type ProfileFormValues } from "@/features/auth/schemas/profile.schema";
-import { createProfile, getUsers } from "@/services/user.service";
+import { updateProfile } from "@/services/user.service";
 import { loginWithGoogle } from "@/services/auth.service";
+import type { User } from "@/types/api";
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
 
@@ -36,53 +36,41 @@ export function LoginPage() {
   const location = useLocation();
   const setSession = useAuthStore((state) => state.setSession);
   const [loginError, setLoginError] = useState<string | null>(null);
+  const [pendingUser, setPendingUser] = useState<User | null>(null);
   const [profileEmail, setProfileEmail] = useState<string | null>(null);
   const [googleLoading, setGoogleLoading] = useState(false);
   const from = (location.state as { from?: { pathname: string } } | null)?.from?.pathname ?? "/dashboard";
-
-  const loginForm = useForm<LoginFormValues>({
-    resolver: zodResolver(loginSchema),
-    defaultValues: { email: "" },
-  });
 
   const profileForm = useForm<ProfileFormValues>({
     resolver: zodResolver(profileSchema),
     values: {
       email: profileEmail ?? "",
-      fullName: "",
-      studentCode: "",
-      studentClass: "",
-      school: "",
-      phone: "",
+      fullName: pendingUser?.fullName ?? "",
+      studentCode: pendingUser?.studentCode ?? "",
+      studentClass: pendingUser?.studentClass ?? "",
+      school: pendingUser?.school ?? "",
+      phone: pendingUser?.phone ?? "",
     },
   });
 
-  const loginByEmail = async (email: string) => {
-    setLoginError(null);
-    let users;
-    try {
-      users = await getUsers();
-    } catch {
-      throw new Error("Không kết nối được backend. Hãy kiểm tra backend đã chạy và CORS đã bật cho localhost:5173.");
+  const hasCompleteProfile = (user: User) => {
+    if (user.role !== "INTERN") {
+      return true;
     }
+    return Boolean(user.fullName && user.studentCode && user.studentClass && user.school && user.phone);
+  };
 
-    const normalizedEmail = email.trim().toLowerCase();
-    const user = users.find((item) => item.email.toLowerCase() === normalizedEmail);
-    if (!user) {
-      setProfileEmail(normalizedEmail);
-      profileForm.reset({
-        email: normalizedEmail,
-        fullName: "",
-        studentCode: "",
-        studentClass: "",
-        school: "",
-        phone: "",
-      });
-      return;
-    }
-
-    setSession(user);
-    navigate(from, { replace: true });
+  const requireProfileCompletion = (user: User) => {
+    setPendingUser(user);
+    setProfileEmail(user.email);
+    profileForm.reset({
+      email: user.email,
+      fullName: user.fullName ?? "",
+      studentCode: user.studentCode ?? "",
+      studentClass: user.studentClass ?? "",
+      school: user.school ?? "",
+      phone: user.phone ?? "",
+    });
   };
 
   const loadGoogleScript = () =>
@@ -123,6 +111,10 @@ export function LoginPage() {
               throw new Error("Google không trả về token đăng nhập.");
             }
             const user = await loginWithGoogle(response.credential);
+            if (!hasCompleteProfile(user)) {
+              requireProfileCompletion(user);
+              return;
+            }
             setSession(user, response.credential);
             navigate(from, { replace: true });
           } catch (error) {
@@ -139,17 +131,12 @@ export function LoginPage() {
     }
   };
 
-  const handleLoginSubmit = async (values: LoginFormValues) => {
-    try {
-      await loginByEmail(values.email);
-    } catch (error) {
-      setLoginError(error instanceof Error ? error.message : "Không thể đăng nhập");
-    }
-  };
-
   const handleCreateProfile = async (values: ProfileFormValues) => {
     try {
-      const user = await createProfile(values);
+      if (!pendingUser) {
+        throw new Error("Chưa có phiên Google để cập nhật hồ sơ.");
+      }
+      const user = await updateProfile(pendingUser.id, values);
       setSession(user);
       navigate(from, { replace: true });
     } catch (error) {
@@ -198,27 +185,10 @@ export function LoginPage() {
               {!profileEmail ? (
                 <>
                   <GoogleLoginButton onClick={handleGoogleLogin} disabled={googleLoading} />
-                  <div className="relative">
-                    <div className="absolute inset-0 flex items-center">
-                      <span className="w-full border-t" />
-                    </div>
-                    <div className="relative flex justify-center text-xs uppercase">
-                      <span className="bg-white px-2 text-muted-foreground">Hoặc nhập Gmail</span>
-                    </div>
-                  </div>
-                  <form className="space-y-3" onSubmit={loginForm.handleSubmit(handleLoginSubmit)}>
-                    <div>
-                      <Input placeholder="ten.sinhvien@gmail.com" {...loginForm.register("email")} />
-                      {loginForm.formState.errors.email && (
-                        <p className="mt-2 text-sm text-destructive">{loginForm.formState.errors.email.message}</p>
-                      )}
-                    </div>
-                    {loginError && <p className="rounded-md bg-red-50 p-3 text-sm text-red-700">{loginError}</p>}
-                    <Button className="w-full" type="submit">
-                      Tiếp tục
-                      <ArrowRight className="h-4 w-4" />
-                    </Button>
-                  </form>
+                  {loginError && <p className="rounded-md bg-red-50 p-3 text-sm text-red-700">{loginError}</p>}
+                  <p className="rounded-md bg-slate-50 p-3 text-sm leading-6 text-muted-foreground">
+                    InternFlow chỉ cho đăng nhập bằng Google để đảm bảo đúng email thật của sinh viên.
+                  </p>
                 </>
               ) : (
                 <form className="space-y-3" onSubmit={profileForm.handleSubmit(handleCreateProfile)}>
@@ -252,7 +222,7 @@ export function LoginPage() {
                       Quay lại
                     </Button>
                     <Button type="submit">
-                      Tạo hồ sơ và vào app
+                      Hoàn tất hồ sơ và vào app
                       <ArrowRight className="h-4 w-4" />
                     </Button>
                   </div>

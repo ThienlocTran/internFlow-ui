@@ -26,14 +26,34 @@
     @apply border-border;
   }
 
+  html {
+    @apply overflow-x-hidden;
+    text-size-adjust: 100%;
+  }
+
   body {
-    @apply bg-background text-foreground antialiased;
+    @apply overflow-x-hidden bg-background text-foreground antialiased;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  img,
+  video,
+  canvas,
+  svg {
+    max-width: 100%;
+  }
+
+  table {
+    border-collapse: collapse;
   }
 }
 
 @layer components {
   .glass-panel {
     @apply border border-white/70 bg-white/85 shadow-soft backdrop-blur-xl;
+  }
+
+  .mobile-safe-x {
+    @apply min-w-0 max-w-full overflow-x-auto;
   }
 }

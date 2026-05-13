@@ -73,7 +73,7 @@ export function AdminDashboardPage() {
       </section>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <DashboardCard label="Tổng người dùng" value={String(data.users.length)} helper="API /users" trend="Dữ liệu thật" icon={UsersRound} />
+        <DashboardCard label="Tổng người dùng" value={String(data.users.length)} helper="Tài khoản trong hệ thống" trend="Đang hoạt động" icon={UsersRound} />
         <DashboardCard label="Sinh viên thực tập" value={String(internshipUsers)} helper="Role INTERN" trend="Có quota" icon={UsersRound} />
         <DashboardCard label="Nhóm trưởng" value={String(leaders)} helper="Quản lý nhóm" trend="Không quota" icon={ShieldCheck} />
         <DashboardCard label="Sức chứa/ngày" value={String(totalCapacity)} helper="Tổng sức chứa ca" trend="9 bạn/ca" icon={Database} />
@@ -83,7 +83,7 @@ export function AdminDashboardPage() {
         <Card className="bg-white/90">
           <CardHeader>
             <CardTitle>Người dùng trong hệ thống</CardTitle>
-            <CardDescription>Danh sách lấy từ API thật. Bảng nâng cao sẽ thêm phân trang và lọc sau.</CardDescription>
+            <CardDescription>Quản lý hồ sơ, vai trò và trạng thái tài khoản.</CardDescription>
           </CardHeader>
           <CardContent className="overflow-x-auto">
             <table className="w-full min-w-[680px] text-sm">
@@ -145,7 +145,7 @@ export function AdminDashboardPage() {
             )}
             <div className="rounded-lg border bg-slate-50 p-4 text-sm text-muted-foreground">
               <BarChart3 className="mr-2 inline h-4 w-4" />
-              Báo cáo số ca đã đi cần thêm endpoint thống kê attendance.
+              Theo dõi số ca, nhật ký và minh chứng điểm danh của từng sinh viên trong trang quản trị.
             </div>
           </CardContent>
         </Card>

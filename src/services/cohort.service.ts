@@ -1,5 +1,5 @@
 import { apiRequest } from "@/api/http";
-import type { InternshipCohort, StudentDetail, User } from "@/types/api";
+import type { AdminStudentDetail, InternshipCohort, StudentDetail, User } from "@/types/api";
 
 export type CreateCohortPayload = {
   code: string;
@@ -27,4 +27,8 @@ export function getCohortStudents(cohortId: string) {
 
 export function getStudentDetail(studentId: string) {
   return apiRequest<StudentDetail>(`/cohorts/students/${studentId}`);
+}
+
+export function getAdminStudentDetail(studentId: string) {
+  return apiRequest<AdminStudentDetail>(`/admin/students/${studentId}/detail`);
 }

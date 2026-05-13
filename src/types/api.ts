@@ -112,6 +112,12 @@ export type ScheduleCapacity = {
   registeredCount: number;
   maxParticipants: number;
   full: boolean;
+  participants: User[];
+};
+
+export type ShiftPeer = {
+  user: User;
+  schedules: ScheduleRegistration[];
 };
 
 export type AttendanceAudit = {
@@ -128,6 +134,10 @@ export type AttendanceAudit = {
   submittedReportPages: number;
   enoughImages: boolean;
   enoughReportPages: boolean;
+  checkinTimemarkImageUrl?: string;
+  checkinGroupImageUrl?: string;
+  checkoutTimemarkImageUrl?: string;
+  checkoutGroupImageUrl?: string;
   images: AttendanceImage[];
 };
 
@@ -139,4 +149,82 @@ export type StudentDetail = {
   requiredCompanyShifts: number;
   requiredHomeShifts: number;
   attendances: AttendanceAudit[];
+};
+
+export type StudentWorkDayDetail = {
+  workDate: string;
+  attendances: AttendanceAudit[];
+  reportEntry?: ReportEntry | null;
+  missingPersonalImages: number;
+  missingGroupImages: number;
+  requiredReportPages: number;
+  submittedReportPages: number;
+  missingReportPages: number;
+  enoughImages: boolean;
+  enoughReportPages: boolean;
+};
+
+export type AdminStudentDetail = {
+  student: User;
+  cohort?: InternshipCohort | null;
+  completedCompanyShifts: number;
+  remainingCompanyShifts: number;
+  requiredCompanyShifts: number;
+  requiredHomeShifts: number;
+  workDays: StudentWorkDayDetail[];
+};
+
+export type ReportEntryStatus = "DRAFT" | "READY_FOR_MAIL" | "NEEDS_MORE_PAGES";
+
+export type ReportDocument = {
+  id: string;
+  user: User;
+  title: string;
+  totalPages: number;
+  completedShiftCount: number;
+  currentFileName?: string;
+  updatedAt?: string;
+};
+
+export type ReportEntry = {
+  id: string;
+  documentId: string;
+  workDate: string;
+  shiftCodes?: string;
+  shiftCount: number;
+  workTimeSummary?: string;
+  content?: string;
+  referenceLinks?: string;
+  pageCount: number;
+  requiredPages: number;
+  status: ReportEntryStatus;
+  enoughPages: boolean;
+  updatedAt?: string;
+};
+
+export type ReportRevision = {
+  id: string;
+  entryId: string;
+  diffSummary: string;
+  pageCountBefore: number;
+  pageCountAfter: number;
+  newContent?: string;
+  createdAt: string;
+};
+
+export type ReportProgress = {
+  document: ReportDocument;
+  entries: ReportEntry[];
+};
+
+export type DailyReportEntry = {
+  document: ReportDocument;
+  entry: ReportEntry;
+};
+
+export type MailSubmitResult = {
+  to: string;
+  cc: string;
+  subject: string;
+  attachmentName: string;
 };

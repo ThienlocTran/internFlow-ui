@@ -7,6 +7,7 @@ import { ErrorState } from "@/components/common/ErrorState";
 import { getUsers } from "@/services/user.service";
 import { getCohorts } from "@/services/cohort.service";
 import { downloadCsv } from "@/utils/export-csv";
+import { formatDate } from "@/utils/date-format";
 
 export function ReportsPage() {
   const usersQuery = useQuery({ queryKey: ["users"], queryFn: getUsers });
@@ -52,8 +53,8 @@ export function ReportsPage() {
       cohorts.map((cohort) => [
         cohort.code,
         cohort.name,
-        cohort.startDate,
-        cohort.endDate,
+        formatDate(cohort.startDate),
+        formatDate(cohort.endDate),
         cohort.active ? "Có" : "Không",
         cohort.defaultForNewStudents ? "Có" : "Không",
       ]),
@@ -64,7 +65,7 @@ export function ReportsPage() {
     <div className="mx-auto max-w-6xl space-y-6">
       <div>
         <h1 className="text-3xl font-semibold tracking-normal">Báo cáo</h1>
-        <p className="mt-2 text-sm text-muted-foreground">Xuất dữ liệu thật phục vụ xác nhận và quản lý thực tập.</p>
+        <p className="mt-2 text-sm text-muted-foreground">Xuất hồ sơ phục vụ xác nhận và quản lý thực tập.</p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">

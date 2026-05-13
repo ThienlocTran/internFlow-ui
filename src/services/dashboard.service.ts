@@ -16,7 +16,7 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
 
   return {
     metrics: [
-      { label: "Người dùng", value: String(users.length), helper: "Tài khoản trong hệ thống", trend: "Dữ liệu thật" },
+      { label: "Người dùng", value: String(users.length), helper: "Tài khoản trong hệ thống", trend: "Đang quản lý" },
       { label: "Ca đang mở", value: String(shifts.length), helper: "Ca có thể điểm danh", trend: "Tối đa 9 bạn/ca" },
       { label: "Chính sách vai trò", value: String(rolePolicies.length), helper: "Quota theo quyền", trend: "Đang áp dụng" },
       {

@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { AlertTriangle, Camera, CheckCircle2, Clock3, Eye, ImageUp, Loader2, UploadCloud } from "lucide-react";
+import { Camera, CheckCircle2, Clock3, Eye, ImageUp, Loader2, UploadCloud } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,16 +12,34 @@ import { getShifts } from "@/services/shift.service";
 import { addAttendanceImage, checkin, checkout, getAttendances } from "@/services/attendance.service";
 import { getUserSchedule } from "@/services/schedule.service";
 import { uploadImage } from "@/services/upload.service";
-import { getCohorts, getCohortStudents, getStudentDetail } from "@/services/cohort.service";
+import { getCohorts, getCohortStudents } from "@/services/cohort.service";
 import { useAuthStore } from "@/store/auth-store";
 import type { Attendance, AttendanceImagePhase, AttendanceImageType, Shift } from "@/types/api";
 import { getGroupPhotoSlots, getPersonalIntervalSlots } from "@/utils/attendance-photo-rules";
-import { downloadCsv } from "@/utils/export-csv";
+import { formatDate } from "@/utils/date-format";
 
 type SlotKey = "checkin-personal" | "checkin-group" | "checkout-personal" | "checkout-group" | string;
 
 function today() {
-  return new Date().toISOString().slice(0, 10);
+  return toDateInputValue(new Date());
+}
+
+function toDateInputValue(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function weekRange(dateText: string) {
+  const date = new Date(`${dateText}T00:00:00`);
+  const day = date.getDay() || 7;
+  const monday = new Date(date);
+  monday.setDate(date.getDate() - day + 1);
+  return {
+    start: toDateInputValue(monday),
+    end: toDateInputValue(new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 6)),
+  };
 }
 
 function fileKey(type: AttendanceImageType, phase: AttendanceImagePhase, time: string) {
@@ -32,20 +50,49 @@ function selectedAttendance(attendances: Attendance[] | undefined, shiftId: stri
   return attendances?.find((attendance) => attendance.shift.id === shiftId);
 }
 
+function savedSlotImage(
+  attendance: Attendance | undefined,
+  imageType: AttendanceImageType,
+  phase: AttendanceImagePhase,
+  expectedTime: string,
+) {
+  return attendance?.images.find(
+    (image) => image.imageType === imageType && image.phase === phase && image.expectedTime === expectedTime,
+  )?.imageUrl;
+}
+
 function ImagePicker({
   label,
   hint,
   file,
+  imageUrl,
   onChange,
 }: {
   label: string;
   hint?: string;
   file?: File;
+  imageUrl?: string;
   onChange: (file: File | undefined) => void;
 }) {
+  const previewUrl = useMemo(() => (file ? URL.createObjectURL(file) : imageUrl), [file, imageUrl]);
+
+  useEffect(() => {
+    return () => {
+      if (file && previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [file, previewUrl]);
+
   return (
-    <label className="block rounded-lg border border-dashed bg-slate-50 p-4 transition-colors hover:bg-slate-100">
-      <div className="flex items-start gap-3">
+    <label className="block overflow-hidden rounded-lg border border-dashed bg-slate-50 transition-colors hover:bg-slate-100">
+      {previewUrl && (
+        <div className="relative border-b bg-white">
+          <img src={previewUrl} alt={label} className="aspect-video w-full object-cover" />
+          <div className="absolute right-3 top-3 rounded-full bg-slate-950/85 px-3 py-1 text-xs font-medium text-white">
+            {file ? "Ảnh vừa chọn" : "Đã lưu"}
+          </div>
+        </div>
+      )}
+      <div className="flex items-start gap-3 p-4">
         <div className="rounded-md bg-white p-2 text-slate-700 shadow-sm">
           <UploadCloud className="h-4 w-4" />
         </div>
@@ -67,17 +114,11 @@ function ImagePicker({
 
 function AdminAttendanceReviewPage() {
   const [selectedCohortId, setSelectedCohortId] = useState<string>("");
-  const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const cohortsQuery = useQuery({ queryKey: ["cohorts"], queryFn: getCohorts });
   const studentsQuery = useQuery({
     queryKey: ["cohort-students", selectedCohortId],
     queryFn: () => getCohortStudents(selectedCohortId),
     enabled: Boolean(selectedCohortId),
-  });
-  const detailQuery = useQuery({
-    queryKey: ["student-detail", selectedStudentId],
-    queryFn: () => getStudentDetail(selectedStudentId!),
-    enabled: Boolean(selectedStudentId),
   });
 
   if (cohortsQuery.isLoading) {
@@ -93,23 +134,6 @@ function AdminAttendanceReviewPage() {
   }
 
   const students = studentsQuery.data ?? [];
-  const exportAttendanceAudit = () => {
-    if (!detailQuery.data) return;
-    downloadCsv(
-      `diem-danh-${detailQuery.data.student.fullName}.csv`,
-      ["Ngày", "Ca", "Ảnh cá nhân", "Thiếu ảnh cá nhân", "Ảnh nhóm", "Thiếu ảnh nhóm", "Trang báo cáo", "Thiếu báo cáo"],
-      detailQuery.data.attendances.map((item) => [
-        item.attendanceDate,
-        item.shiftName,
-        `${item.uploadedPersonalImages}/${item.requiredPersonalImages}`,
-        item.missingPersonalImages,
-        `${item.uploadedGroupImages}/${item.requiredGroupImages}`,
-        item.missingGroupImages,
-        `${item.submittedReportPages}/${item.requiredReportPages}`,
-        item.enoughReportPages ? "Không" : "Có",
-      ]),
-    );
-  };
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
@@ -135,7 +159,6 @@ function AdminAttendanceReviewPage() {
               }`}
               onClick={() => {
                 setSelectedCohortId(cohort.id);
-                setSelectedStudentId(null);
               }}
             >
               <div className="flex items-center justify-between gap-3">
@@ -143,7 +166,7 @@ function AdminAttendanceReviewPage() {
                 <Badge tone={cohort.active ? "success" : "muted"}>{cohort.active ? "Đang mở" : "Đã đóng"}</Badge>
               </div>
               <p className={selectedCohortId === cohort.id ? "mt-2 text-sm text-slate-200" : "mt-2 text-sm text-muted-foreground"}>
-                {cohort.code} · {cohort.startDate}
+                {cohort.code} · {formatDate(cohort.startDate)}
               </p>
             </button>
           ))}
@@ -156,134 +179,75 @@ function AdminAttendanceReviewPage() {
             <CardTitle>Sinh viên trong khóa</CardTitle>
             <CardDescription>Bấm chi tiết để xem từng buổi, ảnh đã nộp và cảnh báo thiếu minh chứng.</CardDescription>
           </CardHeader>
-          <CardContent className="overflow-x-auto">
+          <CardContent>
             {studentsQuery.isLoading ? (
               <div className="flex min-h-32 items-center justify-center">
                 <LoadingSpinner className="h-7 w-7" />
               </div>
             ) : (
-              <table className="w-full min-w-[760px] text-sm">
-                <thead>
-                  <tr className="border-b text-left text-muted-foreground">
-                    <th className="py-3 font-medium">Họ tên</th>
-                    <th className="py-3 font-medium">Email</th>
-                    <th className="py-3 font-medium">MSSV</th>
-                    <th className="py-3 font-medium">Lớp</th>
-                    <th className="py-3 font-medium">Thao tác</th>
-                  </tr>
-                </thead>
-                <tbody>
+              <>
+                <div className="space-y-3 md:hidden">
                   {students.map((student) => (
-                    <tr key={student.id} className="border-b last:border-0">
-                      <td className="py-4 font-medium">{student.fullName}</td>
-                      <td className="py-4 text-muted-foreground">{student.email}</td>
-                      <td className="py-4">{student.studentCode || "Chưa có"}</td>
-                      <td className="py-4">{student.studentClass || "Chưa có"}</td>
-                      <td className="py-4">
-                        <Button size="sm" variant="outline" onClick={() => setSelectedStudentId(student.id)}>
+                    <div key={student.id} className="rounded-lg border bg-slate-50 p-4">
+                      <p className="truncate font-medium">{student.fullName}</p>
+                      <p className="mt-1 truncate text-sm text-muted-foreground">{student.email}</p>
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                        <div className="rounded-md bg-white p-2">
+                          <p className="text-xs text-muted-foreground">MSSV</p>
+                          <p className="truncate font-medium">{student.studentCode || "Chưa có"}</p>
+                        </div>
+                        <div className="rounded-md bg-white p-2">
+                          <p className="text-xs text-muted-foreground">Lớp</p>
+                          <p className="truncate font-medium">{student.studentClass || "Chưa có"}</p>
+                        </div>
+                      </div>
+                      <Button asChild size="sm" variant="outline" className="mt-3 w-full">
+                        <Link to={`/admin/students/${student.id}`}>
                           <Eye className="h-4 w-4" />
                           Chi tiết
-                        </Button>
-                      </td>
-                    </tr>
+                        </Link>
+                      </Button>
+                    </div>
                   ))}
-                </tbody>
-              </table>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {selectedStudentId && (
-        <Card className="bg-white/90">
-          <CardHeader>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <CardTitle>Chi tiết minh chứng</CardTitle>
-                <CardDescription>Thuật toán kiểm tra số ảnh theo ca và 8 trang báo cáo mỗi ca.</CardDescription>
-              </div>
-              <Button variant="outline" disabled={!detailQuery.data} onClick={exportAttendanceAudit}>
-                Xuất CSV
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {detailQuery.isLoading && (
-              <div className="flex min-h-32 items-center justify-center">
-                <LoadingSpinner className="h-7 w-7" />
-              </div>
-            )}
-            {detailQuery.data && (
-              <div className="space-y-4">
-                <div className="grid gap-3 md:grid-cols-3">
-                  <div className="rounded-lg border bg-slate-50 p-4">
-                    <p className="text-sm text-muted-foreground">Sinh viên</p>
-                    <p className="mt-1 font-semibold">{detailQuery.data.student.fullName}</p>
-                  </div>
-                  <div className="rounded-lg border bg-slate-50 p-4">
-                    <p className="text-sm text-muted-foreground">Đã hoàn thành</p>
-                    <p className="mt-1 font-semibold">{detailQuery.data.completedCompanyShifts} ca</p>
-                  </div>
-                  <div className="rounded-lg border bg-slate-50 p-4">
-                    <p className="text-sm text-muted-foreground">Còn thiếu</p>
-                    <p className="mt-1 font-semibold">{detailQuery.data.remainingCompanyShifts} ca</p>
-                  </div>
                 </div>
 
-                {detailQuery.data.attendances.map((attendance) => (
-                  <div key={attendance.attendanceId} className="rounded-lg border p-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <p className="font-semibold">
-                          {attendance.attendanceDate} · {attendance.shiftName}
-                        </p>
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          Cá nhân {attendance.uploadedPersonalImages}/{attendance.requiredPersonalImages} · Nhóm{" "}
-                          {attendance.uploadedGroupImages}/{attendance.requiredGroupImages} · Báo cáo{" "}
-                          {attendance.submittedReportPages}/{attendance.requiredReportPages} trang
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        <Badge tone={attendance.enoughImages ? "success" : "warning"}>
-                          {attendance.enoughImages ? "Đủ ảnh" : "Thiếu ảnh"}
-                        </Badge>
-                        <Badge tone={attendance.enoughReportPages ? "success" : "warning"}>
-                          {attendance.enoughReportPages ? "Đủ báo cáo" : "Thiếu báo cáo"}
-                        </Badge>
-                      </div>
-                    </div>
-                    {(!attendance.enoughImages || !attendance.enoughReportPages) && (
-                      <div className="mt-3 flex items-start gap-2 rounded-md bg-amber-50 p-3 text-sm text-amber-800">
-                        <AlertTriangle className="mt-0.5 h-4 w-4" />
-                        <span>
-                          Thiếu {attendance.missingPersonalImages} ảnh cá nhân, {attendance.missingGroupImages} ảnh nhóm và{" "}
-                          {Math.max(0, attendance.requiredReportPages - attendance.submittedReportPages)} trang báo cáo.
-                        </span>
-                      </div>
-                    )}
-                    {attendance.images.length > 0 && (
-                      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                        {attendance.images.map((image) => (
-                          <a key={image.id} href={image.imageUrl} target="_blank" rel="noreferrer" className="group block">
-                            <img
-                              src={image.imageUrl}
-                              alt={`${image.imageType} ${image.expectedTime}`}
-                              className="aspect-video w-full rounded-md border object-cover transition group-hover:opacity-80"
-                            />
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {image.imageType} · {image.expectedTime}
-                            </p>
-                          </a>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
+                <div className="hidden overflow-x-auto md:block">
+                  <table className="w-full min-w-[760px] text-sm">
+                    <thead>
+                      <tr className="border-b text-left text-muted-foreground">
+                        <th className="py-3 font-medium">Họ tên</th>
+                        <th className="py-3 font-medium">Email</th>
+                        <th className="py-3 font-medium">MSSV</th>
+                        <th className="py-3 font-medium">Lớp</th>
+                        <th className="py-3 font-medium">Thao tác</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {students.map((student) => (
+                        <tr key={student.id} className="border-b last:border-0">
+                          <td className="py-4 font-medium">{student.fullName}</td>
+                          <td className="py-4 text-muted-foreground">{student.email}</td>
+                          <td className="py-4">{student.studentCode || "Chưa có"}</td>
+                          <td className="py-4">{student.studentClass || "Chưa có"}</td>
+                          <td className="py-4">
+                            <Button asChild size="sm" variant="outline">
+                              <Link to={`/admin/students/${student.id}`}>
+                                <Eye className="h-4 w-4" />
+                                Chi tiết
+                              </Link>
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             )}
           </CardContent>
         </Card>
       )}
+
     </div>
   );
 }
@@ -297,6 +261,7 @@ function InternAttendancePage() {
   const [files, setFiles] = useState<Record<SlotKey, File | undefined>>({});
   const [message, setMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const range = weekRange(attendanceDate);
 
   const shiftsQuery = useQuery({ queryKey: ["shifts"], queryFn: getShifts });
   const attendancesQuery = useQuery({
@@ -309,6 +274,11 @@ function InternAttendancePage() {
     queryFn: () => getUserSchedule(user!.id, attendanceDate, attendanceDate),
     enabled: Boolean(user?.id),
   });
+  const weeklyScheduleQuery = useQuery({
+    queryKey: ["schedule-week", user?.id, range.start, range.end],
+    queryFn: () => getUserSchedule(user!.id, range.start, range.end),
+    enabled: Boolean(user?.id),
+  });
 
   const shifts = shiftsQuery.data ?? [];
   const registeredShiftIds = new Set(
@@ -317,6 +287,7 @@ function InternAttendancePage() {
       .map((item) => item.shift.id),
   );
   const registeredShifts = shifts.filter((shift) => registeredShiftIds.has(shift.id));
+  const weekRegisteredSchedules = (weeklyScheduleQuery.data ?? []).filter((item) => item.status === "REGISTERED");
   const selectedShift = useMemo(
     () => registeredShifts.find((shift) => shift.id === selectedShiftId) ?? registeredShifts[0],
     [selectedShiftId, registeredShifts],
@@ -417,7 +388,7 @@ function InternAttendancePage() {
     },
   });
 
-  if (shiftsQuery.isLoading || attendancesQuery.isLoading || registeredScheduleQuery.isLoading) {
+  if (shiftsQuery.isLoading || attendancesQuery.isLoading || registeredScheduleQuery.isLoading || weeklyScheduleQuery.isLoading) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
         <LoadingSpinner className="h-8 w-8" />
@@ -483,7 +454,7 @@ function InternAttendancePage() {
       <Card className="bg-white/90">
         <CardHeader>
           <CardTitle>Chọn ca đã đăng ký</CardTitle>
-          <CardDescription>Ngày điểm danh: {attendanceDate}</CardDescription>
+          <CardDescription>Ngày điểm danh: {formatDate(attendanceDate)}</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-4">
           {shifts.map((shift) => (
@@ -508,9 +479,20 @@ function InternAttendancePage() {
           {registeredShifts.length === 0 && (
             <div className="col-span-full rounded-lg border border-dashed bg-slate-50 p-8 text-center">
               <p className="font-medium">Bạn chưa đăng ký ca nào cho ngày này</p>
-              <p className="mt-2 text-sm text-muted-foreground">Hãy đăng ký lịch trước, sau đó quay lại điểm danh.</p>
+              <p className="mt-2 text-sm text-muted-foreground">Nếu bạn đã đăng ký ca ở ngày khác, hãy bấm đúng ngày bên dưới để mở form điểm danh.</p>
+              {weekRegisteredSchedules.length > 0 && (
+                <div className="mt-4 flex flex-wrap justify-center gap-2">
+                  {weekRegisteredSchedules.map((item) => (
+                    <Button key={item.id} asChild size="sm" variant="outline">
+                      <Link to={`/attendance?date=${item.scheduleDate}`}>
+                        {formatDate(item.scheduleDate)} - {item.shift.name}
+                      </Link>
+                    </Button>
+                  ))}
+                </div>
+              )}
               <Button asChild className="mt-4">
-                <Link to={`/schedule?date=${attendanceDate}`}>Đăng ký ca</Link>
+                <Link to={`/schedule?date=${attendanceDate}`}>Đăng ký ca cho ngày này</Link>
               </Button>
             </div>
           )}
@@ -548,12 +530,14 @@ function InternAttendancePage() {
                 label="Ảnh TimeMark vào ca"
                 hint="Bắt buộc để checkin."
                 file={files["checkin-personal"]}
+                imageUrl={currentAttendance?.checkinTimemarkImageUrl}
                 onChange={(file) => setFile("checkin-personal", file)}
               />
               <ImagePicker
                 label="Ảnh nhóm vào ca"
                 hint="Không bắt buộc nếu hôm đó chỉ có một mình."
                 file={files["checkin-group"]}
+                imageUrl={currentAttendance?.checkinGroupImageUrl}
                 onChange={(file) => setFile("checkin-group", file)}
               />
             </div>
@@ -573,6 +557,7 @@ function InternAttendancePage() {
                       <ImagePicker
                         label={`Mốc ${slot.time}`}
                         file={files[key]}
+                        imageUrl={savedSlotImage(currentAttendance, "PERSONAL_TIMEMARK", "DURING_SHIFT", slot.time)}
                         onChange={(file) => setFile(key, file)}
                       />
                       <Button
@@ -613,6 +598,7 @@ function InternAttendancePage() {
                         label={`${slot.label} - ${slot.time}`}
                         hint={phase === "CHECKIN" ? "Người đại diện giơ 2 ngón tay chào." : phase === "CHECKOUT" ? "Người đại diện giơ tay tạm biệt." : undefined}
                         file={files[key]}
+                        imageUrl={savedSlotImage(currentAttendance, "GROUP", phase, slot.time)}
                         onChange={(file) => setFile(key, file)}
                       />
                       <Button
@@ -643,12 +629,14 @@ function InternAttendancePage() {
                 label="Ảnh TimeMark tan ca"
                 hint="Bắt buộc để checkout."
                 file={files["checkout-personal"]}
+                imageUrl={currentAttendance?.checkoutTimemarkImageUrl}
                 onChange={(file) => setFile("checkout-personal", file)}
               />
               <ImagePicker
                 label="Ảnh nhóm tan ca"
                 hint="Không bắt buộc nếu hôm đó chỉ có một mình."
                 file={files["checkout-group"]}
+                imageUrl={currentAttendance?.checkoutGroupImageUrl}
                 onChange={(file) => setFile("checkout-group", file)}
               />
             </div>
