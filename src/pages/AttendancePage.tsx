@@ -697,10 +697,31 @@ function InternAttendancePage() {
               />
             </div>
 
-            <Button onClick={() => checkoutMutation.mutate()} disabled={!currentAttendance || currentAttendance.status === "CHECKED_OUT" || isBusy}>
-              {checkoutMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-              Checkout
-            </Button>
+            <div className="space-y-2">
+              <Button 
+                onClick={() => checkoutMutation.mutate()} 
+                disabled={!currentAttendance || currentAttendance.status === "CHECKED_OUT" || isBusy}
+                className="w-full md:w-auto"
+              >
+                {checkoutMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                Checkout
+              </Button>
+              {!currentAttendance && (
+                <p className="text-sm text-amber-600">
+                  ⚠️ Bạn cần checkin trước khi có thể checkout
+                </p>
+              )}
+              {currentAttendance?.status === "CHECKED_OUT" && (
+                <p className="text-sm text-emerald-600">
+                  ✓ Bạn đã checkout ca này rồi
+                </p>
+              )}
+              {currentAttendance && currentAttendance.status !== "CHECKED_OUT" && !files["checkout-personal"] && !currentAttendance.checkoutTimemarkImageUrl && !getDraft("checkout-personal") && (
+                <p className="text-sm text-amber-600">
+                  💡 Chọn ảnh TimeMark tan ca để có thể checkout
+                </p>
+              )}
+            </div>
           </CardContent>
         </Card>
       )}
