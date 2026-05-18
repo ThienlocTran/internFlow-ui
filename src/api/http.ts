@@ -64,14 +64,28 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}) 
       throw new Error("Phiên đăng nhập đã hết hạn");
     }
 
-    const payload = (await response.json()) as ApiResponse<T>;
-    if (!response.ok || !payload.success) {
-      throw new Error(payload.message || "Có lỗi xảy ra");
+    let payload: ApiResponse<T> | null = null;
+    try {
+      payload = (await response.json()) as ApiResponse<T>;
+    } catch {
+      payload = null;
+    }
+
+    if (!response.ok || !payload?.success) {
+      throw new Error(
+        payload?.message ||
+          (response.status >= 500
+            ? "M?y ch? ?ang g?p s? c?, vui l?ng th? l?i sau v?i gi?y."
+            : "Y?u c?u ch?a th? x? l?, vui l?ng ki?m tra l?i th?ng tin."),
+      );
     }
 
     return payload.data;
   } catch (error) {
     cleanup();
+    if (error instanceof TypeError) {
+      throw new Error("Kh?ng k?t n?i ???c t?i m?y ch?. Vui l?ng ki?m tra m?ng v? th? l?i.");
+    }
     throw error;
   }
 }

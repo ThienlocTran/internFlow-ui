@@ -138,6 +138,8 @@ export type AttendanceAudit = {
   checkinGroupImageUrl?: string;
   checkoutTimemarkImageUrl?: string;
   checkoutGroupImageUrl?: string;
+  missingPersonalSlots: string[];
+  missingGroupSlots: string[];
   images: AttendanceImage[];
 };
 

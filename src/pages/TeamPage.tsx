@@ -14,6 +14,7 @@ import { getStudentDetail } from "@/services/cohort.service";
 import { getReportProgress } from "@/services/report-journal.service";
 import { useAuthStore } from "@/store/auth-store";
 import { formatDate } from "@/utils/date-format";
+import type { AttendanceAudit } from "@/types/api";
 
 const roleLabels: Record<string, string> = {
   INTERN: "Sinh viên thường",
@@ -25,6 +26,16 @@ const roleLabels: Record<string, string> = {
 function today() {
   const date = new Date();
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function attendanceImages(attendance: AttendanceAudit) {
+  const legacy = [
+    attendance.checkinTimemarkImageUrl,
+    attendance.checkinGroupImageUrl,
+    attendance.checkoutTimemarkImageUrl,
+    attendance.checkoutGroupImageUrl,
+  ].filter((url): url is string => Boolean(url));
+  return [...legacy, ...attendance.images.map((image) => image.imageUrl)];
 }
 
 export function TeamPage() {
@@ -243,11 +254,23 @@ export function TeamPage() {
                         <p className="mt-1 text-sm text-muted-foreground">
                           Ảnh cá nhân {attendance.uploadedPersonalImages}/{attendance.requiredPersonalImages} · Ảnh nhóm {attendance.uploadedGroupImages}/{attendance.requiredGroupImages}
                         </p>
-                        {attendance.images.length > 0 && (
+                        {!attendance.enoughImages && (
+                          <div className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+                            {attendance.missingPersonalSlots.length > 0 && (
+                              <p>Thi?u TimeMark: {attendance.missingPersonalSlots.join(", ")}</p>
+                            )}
+                            {attendance.missingGroupSlots.length > 0 && (
+                              <p className={attendance.missingPersonalSlots.length > 0 ? "mt-1" : ""}>
+                                Thi?u ?nh nh?m: {attendance.missingGroupSlots.join(", ")}
+                              </p>
+                            )}
+                          </div>
+                        )}
+                        {attendanceImages(attendance).length > 0 && (
                           <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                            {attendance.images.slice(0, 4).map((image) => (
-                              <a key={image.id} href={image.imageUrl} target="_blank" rel="noreferrer">
-                                <img src={image.imageUrl} alt={image.expectedTime} className="aspect-video rounded-md border object-cover" />
+                            {attendanceImages(attendance).slice(0, 4).map((imageUrl) => (
+                              <a key={imageUrl} href={imageUrl} target="_blank" rel="noreferrer">
+                                <img src={imageUrl} alt="Ảnh điểm danh" className="aspect-video rounded-md border object-cover" />
                               </a>
                             ))}
                           </div>
