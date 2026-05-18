@@ -168,9 +168,8 @@ function AdminAttendanceReviewPage() {
             <button
               key={cohort.id}
               type="button"
-              className={`rounded-lg border p-4 text-left transition ${
-                selectedCohortId === cohort.id ? "border-slate-950 bg-slate-950 text-white" : "bg-white hover:bg-slate-50"
-              }`}
+              className={`rounded-lg border p-4 text-left transition ${selectedCohortId === cohort.id ? "border-slate-950 bg-slate-950 text-white" : "bg-white hover:bg-slate-50"
+                }`}
               onClick={() => {
                 setSelectedCohortId(cohort.id);
               }}
@@ -518,9 +517,8 @@ function InternAttendancePage() {
               key={shift.id}
               type="button"
               disabled={!registeredShiftIds.has(shift.id)}
-              className={`rounded-lg border p-4 text-left transition ${
-                selectedShift?.id === shift.id ? "border-slate-950 bg-slate-950 text-white" : "bg-white hover:bg-slate-50"
-              } ${!registeredShiftIds.has(shift.id) ? "cursor-not-allowed opacity-50" : ""}`}
+              className={`rounded-lg border p-4 text-left transition ${selectedShift?.id === shift.id ? "border-slate-950 bg-slate-950 text-white" : "bg-white hover:bg-slate-50"
+                } ${!registeredShiftIds.has(shift.id) ? "cursor-not-allowed opacity-50" : ""}`}
               onClick={() => setSelectedShiftId(shift.id)}
             >
               <p className="font-semibold">{shift.name}</p>
