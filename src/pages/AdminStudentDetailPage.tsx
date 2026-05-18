@@ -143,6 +143,18 @@ export function AdminStudentDetailPage() {
                             {attendance.enoughImages ? "Đủ minh chứng" : "Còn thiếu"}
                           </Badge>
                         </div>
+                        {!attendance.enoughImages && (
+                          <div className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+                            {attendance.missingPersonalSlots.length > 0 && (
+                              <p>Thi?u TimeMark: {attendance.missingPersonalSlots.join(", ")}</p>
+                            )}
+                            {attendance.missingGroupSlots.length > 0 && (
+                              <p className={attendance.missingPersonalSlots.length > 0 ? "mt-1" : ""}>
+                                Thi?u ?nh nh?m: {attendance.missingGroupSlots.join(", ")}
+                              </p>
+                            )}
+                          </div>
+                        )}
                         {images.length > 0 ? (
                           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                             {images.map((image) => (

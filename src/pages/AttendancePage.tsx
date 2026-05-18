@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { ErrorState } from "@/components/common/ErrorState";
 import { getShifts } from "@/services/shift.service";
-import { addAttendanceImage, checkin, checkout, getAttendances } from "@/services/attendance.service";
+import { addAttendanceImage, checkin, checkout, getAttendances, saveCheckoutDraft } from "@/services/attendance.service";
 import { getUserSchedule } from "@/services/schedule.service";
 import { uploadImage } from "@/services/upload.service";
 import { getCohorts, getCohortStudents } from "@/services/cohort.service";
@@ -17,6 +17,7 @@ import { useAuthStore } from "@/store/auth-store";
 import type { Attendance, AttendanceImagePhase, AttendanceImageType, Shift } from "@/types/api";
 import { getGroupPhotoSlots, getPersonalIntervalSlots } from "@/utils/attendance-photo-rules";
 import { formatDate } from "@/utils/date-format";
+import { withCloudinaryTransform } from "@/utils/cloudinary-image";
 
 // --- localStorage draft helpers ---
 const DRAFT_KEY = "internflow-attendance-drafts";
@@ -28,6 +29,74 @@ function writeDraft(k: string, url: string) {
 }
 function removeDrafts(keys: string[]) {
   const all = readDrafts(); keys.forEach((k) => delete all[k]); localStorage.setItem(DRAFT_KEY, JSON.stringify(all));
+}
+
+const PREVIEW_DB_NAME = "internflow-attendance-preview-drafts";
+const PREVIEW_STORE_NAME = "previews";
+
+function openPreviewDb() {
+  return new Promise<IDBDatabase>((resolve, reject) => {
+    const request = indexedDB.open(PREVIEW_DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(PREVIEW_STORE_NAME)) {
+        db.createObjectStore(PREVIEW_STORE_NAME);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function writePreviewDraft(key: string, file: File) {
+  const db = await openPreviewDb();
+  await new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction(PREVIEW_STORE_NAME, "readwrite");
+    transaction.objectStore(PREVIEW_STORE_NAME).put(file, key);
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error);
+  });
+  db.close();
+}
+
+async function readPreviewDrafts() {
+  const db = await openPreviewDb();
+  const result = await new Promise<Record<string, string>>((resolve, reject) => {
+    const transaction = db.transaction(PREVIEW_STORE_NAME, "readonly");
+    const request = transaction.objectStore(PREVIEW_STORE_NAME).getAllKeys();
+    request.onsuccess = async () => {
+      const keys = request.result as string[];
+      const entries = await Promise.all(
+        keys.map(
+          (key) =>
+            new Promise<[string, string] | null>((entryResolve) => {
+              const getRequest = transaction.objectStore(PREVIEW_STORE_NAME).get(key);
+              getRequest.onsuccess = () => {
+                const file = getRequest.result as File | undefined;
+                entryResolve(file ? [key, URL.createObjectURL(file)] : null);
+              };
+              getRequest.onerror = () => entryResolve(null);
+            }),
+        ),
+      );
+      resolve(Object.fromEntries(entries.filter((entry): entry is [string, string] => Boolean(entry))));
+    };
+    request.onerror = () => reject(request.error);
+  });
+  db.close();
+  return result;
+}
+
+async function removePreviewDrafts(keys: string[]) {
+  const db = await openPreviewDb();
+  await new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction(PREVIEW_STORE_NAME, "readwrite");
+    const store = transaction.objectStore(PREVIEW_STORE_NAME);
+    keys.forEach((key) => store.delete(key));
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error);
+  });
+  db.close();
 }
 
 type SlotKey = "checkin-personal" | "checkin-group" | "checkout-personal" | "checkout-group" | string;
@@ -68,8 +137,12 @@ function savedSlotImage(
   phase: AttendanceImagePhase,
   expectedTime: string,
 ) {
+  const normalizedExpectedTime = expectedTime.slice(0, 5);
   return attendance?.images.find(
-    (image) => image.imageType === imageType && image.phase === phase && image.expectedTime === expectedTime,
+    (image) =>
+      image.imageType === imageType &&
+      image.phase === phase &&
+      image.expectedTime.slice(0, 5) === normalizedExpectedTime,
   )?.imageUrl;
 }
 
@@ -88,13 +161,21 @@ function ImagePicker({
   cachedUrl?: string;
   onChange: (file: File | undefined) => void;
 }) {
-  const previewUrl = useMemo(() => (file ? URL.createObjectURL(file) : imageUrl ?? cachedUrl), [file, imageUrl, cachedUrl]);
+  const [filePreviewUrl, setFilePreviewUrl] = useState<string | undefined>();
 
   useEffect(() => {
+    if (!file) {
+      setFilePreviewUrl(undefined);
+      return;
+    }
+    const nextPreviewUrl = URL.createObjectURL(file);
+    setFilePreviewUrl(nextPreviewUrl);
     return () => {
-      if (file && previewUrl) URL.revokeObjectURL(previewUrl);
+      URL.revokeObjectURL(nextPreviewUrl);
     };
-  }, [file, previewUrl]);
+  }, [file]);
+
+  const previewUrl = filePreviewUrl ?? withCloudinaryTransform(imageUrl ?? cachedUrl, "c_limit,w_900,q_auto,f_auto");
 
   return (
     <label className="block overflow-hidden rounded-lg border border-dashed bg-slate-50 transition-colors hover:bg-slate-100">
@@ -275,7 +356,18 @@ function InternAttendancePage() {
   const [message, setMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [allDraftUrls, setAllDraftUrls] = useState<Record<string, string>>(readDrafts);
+  const [allPreviewDraftUrls, setAllPreviewDraftUrls] = useState<Record<string, string>>({});
   const range = weekRange(attendanceDate);
+
+  useEffect(() => {
+    let mounted = true;
+    void readPreviewDrafts().then((drafts) => {
+      if (mounted) setAllPreviewDraftUrls(drafts);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const shiftsQuery = useQuery({ queryKey: ["shifts"], queryFn: getShifts });
   const attendancesQuery = useQuery({
@@ -381,6 +473,7 @@ function InternAttendancePage() {
         `${user?.id ?? ""}|${attendanceDate}|${selectedShift?.id ?? ""}|checkout-group`,
       ];
       removeDrafts(keysToRemove);
+      void removePreviewDrafts(keysToRemove);
       setAllDraftUrls((prev) => {
         const next = { ...prev };
         keysToRemove.forEach((k) => delete next[k]);
@@ -428,6 +521,31 @@ function InternAttendancePage() {
     },
   });
 
+  const saveCheckoutDraftMutation = useMutation({
+    mutationFn: async ({ slotKey, file }: { slotKey: "checkout-personal" | "checkout-group"; file: File }) => {
+      if (!currentAttendance) throw new Error("Bạn cần checkin trước khi lưu ảnh tan ca.");
+      const uploaded = await uploadImage(file);
+      return saveCheckoutDraft(currentAttendance.id, {
+        timemarkImageUrl:
+          slotKey === "checkout-personal"
+            ? uploaded.url
+            : currentAttendance.checkoutTimemarkImageUrl ?? "",
+        groupImageUrl:
+          slotKey === "checkout-group"
+            ? uploaded.url
+            : currentAttendance.checkoutGroupImageUrl,
+      });
+    },
+    onSuccess: () => {
+      setMessage("Đã lưu ảnh tan ca.");
+      setErrorMessage(null);
+      queryClient.invalidateQueries({ queryKey: ["attendances", user?.id, attendanceDate] });
+    },
+    onError: (error) => {
+      setErrorMessage(error instanceof Error ? error.message : "Không thể lưu ảnh tan ca.");
+    },
+  });
+
   if (shiftsQuery.isLoading || attendancesQuery.isLoading || registeredScheduleQuery.isLoading || weeklyScheduleQuery.isLoading) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
@@ -447,19 +565,91 @@ function InternAttendancePage() {
   // composite key for localStorage
   const ck = (slotKey: SlotKey) => `${user?.id ?? ""}|${attendanceDate}|${selectedShift?.id ?? ""}|${slotKey}`;
   const getDraft = (slotKey: SlotKey) => allDraftUrls[ck(slotKey)];
+  const getPreviewDraft = (slotKey: SlotKey) => allPreviewDraftUrls[ck(slotKey)];
+  const persistDraftUrl = (slotKey: SlotKey, url: string) => {
+    const key = ck(slotKey);
+    writeDraft(key, url);
+    setAllDraftUrls((prev) => ({ ...prev, [key]: url }));
+  };
 
   // auto-upload on file select and persist URL to localStorage
   const handleFileChange = (slotKey: SlotKey, file: File | undefined) => {
     setFile(slotKey, file);
     if (!file) return;
+    const previewKey = ck(slotKey);
+    void writePreviewDraft(previewKey, file);
+    setAllPreviewDraftUrls((prev) => ({ ...prev, [previewKey]: URL.createObjectURL(file) }));
     void uploadImage(file).then(({ url }) => {
-      const key = ck(slotKey);
-      writeDraft(key, url);
-      setAllDraftUrls((prev) => ({ ...prev, [key]: url }));
+      persistDraftUrl(slotKey, url);
     });
   };
 
-  const isBusy = saveMutation.isPending || checkoutMutation.isPending || uploadSlotMutation.isPending;
+  const handlePersistedSlotChange = (
+    slotKey: SlotKey,
+    file: File | undefined,
+    imageType: AttendanceImageType,
+    phase: AttendanceImagePhase,
+    expectedTime: string,
+    displayOrder: number,
+  ) => {
+    setFile(slotKey, file);
+    if (!file) return;
+    const previewKey = ck(slotKey);
+    void writePreviewDraft(previewKey, file);
+    setAllPreviewDraftUrls((prev) => ({ ...prev, [previewKey]: URL.createObjectURL(file) }));
+    void (async () => {
+      try {
+        const { url } = await uploadImage(file);
+        persistDraftUrl(slotKey, url);
+        if (currentAttendance) {
+          const savedImage = await addAttendanceImage(currentAttendance.id, {
+            imageType,
+            phase,
+            expectedTime,
+            imageUrl: url,
+            displayOrder,
+          });
+          queryClient.setQueryData<Attendance[]>(["attendances", user?.id, attendanceDate], (current) =>
+            current?.map((attendance) =>
+              attendance.id === currentAttendance.id
+                ? {
+                    ...attendance,
+                    images: [
+                      ...attendance.images.filter(
+                        (image) =>
+                          !(
+                            image.imageType === imageType &&
+                            image.phase === phase &&
+                            image.expectedTime.slice(0, 5) === expectedTime.slice(0, 5)
+                          ),
+                      ),
+                      savedImage,
+                    ],
+                  }
+                : attendance,
+            ),
+          );
+        }
+        setMessage(currentAttendance ? "?? t? ??ng l?u ?nh theo m?c th?i gian." : "?? l?u nh?p ?nh, F5 s? kh?ng m?t.");
+        setErrorMessage(null);
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : "Kh?ng th? t? ??ng l?u ?nh.");
+      }
+    })();
+  };
+
+  const hasEnoughPersonalImagesForCheckout =
+    Boolean(currentAttendance?.checkinTimemarkImageUrl) &&
+    personalSlots.every((slot) =>
+      Boolean(savedSlotImage(currentAttendance, "PERSONAL_TIMEMARK", "DURING_SHIFT", slot.time)),
+    ) &&
+    Boolean(files["checkout-personal"] || currentAttendance?.checkoutTimemarkImageUrl || getDraft("checkout-personal"));
+
+  const isBusy =
+    saveMutation.isPending ||
+    checkoutMutation.isPending ||
+    uploadSlotMutation.isPending ||
+    saveCheckoutDraftMutation.isPending;
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -585,14 +775,16 @@ function InternAttendancePage() {
                 hint="Bắt buộc để checkin."
                 file={files["checkin-personal"]}
                 imageUrl={currentAttendance?.checkinTimemarkImageUrl}
-                onChange={(file) => setFile("checkin-personal", file)}
+                cachedUrl={getDraft("checkin-personal") ?? getPreviewDraft("checkin-personal")}
+                onChange={(file) => handleFileChange("checkin-personal", file)}
               />
               <ImagePicker
                 label="Ảnh nhóm vào ca"
                 hint="Không bắt buộc nếu hôm đó chỉ có một mình."
                 file={files["checkin-group"]}
                 imageUrl={currentAttendance?.checkinGroupImageUrl}
-                onChange={(file) => setFile("checkin-group", file)}
+                cachedUrl={getDraft("checkin-group") ?? getPreviewDraft("checkin-group")}
+                onChange={(file) => handleFileChange("checkin-group", file)}
               />
             </div>
 
@@ -612,7 +804,17 @@ function InternAttendancePage() {
                         label={`Mốc ${slot.time}`}
                         file={files[key]}
                         imageUrl={savedSlotImage(currentAttendance, "PERSONAL_TIMEMARK", "DURING_SHIFT", slot.time)}
-                        onChange={(file) => setFile(key, file)}
+                        cachedUrl={getDraft(key) ?? getPreviewDraft(key)}
+                        onChange={(file) =>
+                          handlePersistedSlotChange(
+                            key,
+                            file,
+                            "PERSONAL_TIMEMARK",
+                            "DURING_SHIFT",
+                            slot.time,
+                            index,
+                          )
+                        }
                       />
                       <Button
                         className="mt-3"
@@ -653,7 +855,8 @@ function InternAttendancePage() {
                         hint={phase === "CHECKIN" ? "Người đại diện giơ 2 ngón tay chào." : phase === "CHECKOUT" ? "Người đại diện giơ tay tạm biệt." : undefined}
                         file={files[key]}
                         imageUrl={savedSlotImage(currentAttendance, "GROUP", phase, slot.time)}
-                        onChange={(file) => setFile(key, file)}
+                        cachedUrl={getDraft(key) ?? getPreviewDraft(key)}
+                        onChange={(file) => handlePersistedSlotChange(key, file, "GROUP", phase, slot.time, index)}
                       />
                       <Button
                         className="mt-3"
@@ -684,23 +887,33 @@ function InternAttendancePage() {
                 hint="Bắt buộc để checkout."
                 file={files["checkout-personal"]}
                 imageUrl={currentAttendance?.checkoutTimemarkImageUrl}
-                cachedUrl={getDraft("checkout-personal")}
-                onChange={(file) => handleFileChange("checkout-personal", file)}
+                cachedUrl={getDraft("checkout-personal") ?? getPreviewDraft("checkout-personal")}
+                onChange={(file) => {
+                  handleFileChange("checkout-personal", file);
+                  if (file && currentAttendance) {
+                    saveCheckoutDraftMutation.mutate({ slotKey: "checkout-personal", file });
+                  }
+                }}
               />
               <ImagePicker
                 label="Ảnh nhóm tan ca"
                 hint="Không bắt buộc nếu hôm đó chỉ có một mình."
                 file={files["checkout-group"]}
                 imageUrl={currentAttendance?.checkoutGroupImageUrl}
-                cachedUrl={getDraft("checkout-group")}
-                onChange={(file) => handleFileChange("checkout-group", file)}
+                cachedUrl={getDraft("checkout-group") ?? getPreviewDraft("checkout-group")}
+                onChange={(file) => {
+                  handleFileChange("checkout-group", file);
+                  if (file && currentAttendance) {
+                    saveCheckoutDraftMutation.mutate({ slotKey: "checkout-group", file });
+                  }
+                }}
               />
             </div>
 
             <div className="space-y-2">
               <Button 
                 onClick={() => checkoutMutation.mutate()} 
-                disabled={!currentAttendance || currentAttendance.status === "CHECKED_OUT" || isBusy}
+                disabled={!currentAttendance || currentAttendance.status === "CHECKED_OUT" || !hasEnoughPersonalImagesForCheckout || isBusy}
                 className="w-full md:w-auto"
               >
                 {checkoutMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
@@ -708,17 +921,17 @@ function InternAttendancePage() {
               </Button>
               {!currentAttendance && (
                 <p className="text-sm text-amber-600">
-                  ⚠️ Bạn cần checkin trước khi có thể checkout
+                  Bạn cần checkin trước khi có thể checkout
                 </p>
               )}
               {currentAttendance?.status === "CHECKED_OUT" && (
                 <p className="text-sm text-emerald-600">
-                  ✓ Bạn đã checkout ca này rồi
+                  Bạn đã checkout ca này rồi
                 </p>
               )}
-              {currentAttendance && currentAttendance.status !== "CHECKED_OUT" && !files["checkout-personal"] && !currentAttendance.checkoutTimemarkImageUrl && !getDraft("checkout-personal") && (
+              {currentAttendance && currentAttendance.status !== "CHECKED_OUT" && !hasEnoughPersonalImagesForCheckout && (
                 <p className="text-sm text-amber-600">
-                  💡 Chọn ảnh TimeMark tan ca để có thể checkout
+                  Cần đủ ảnh TimeMark giữa ca và ảnh TimeMark tan ca trước khi checkout
                 </p>
               )}
             </div>
