@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { ErrorState } from "@/components/common/ErrorState";
 import { getShifts } from "@/services/shift.service";
-import { addAttendanceImage, checkin, checkout, getAttendances } from "@/services/attendance.service";
+import { addAttendanceImage, checkin, checkout, getAttendances, saveCheckoutDraft } from "@/services/attendance.service";
 import { getUserSchedule } from "@/services/schedule.service";
 import { uploadImage } from "@/services/upload.service";
 import { getCohorts, getCohortStudents } from "@/services/cohort.service";
@@ -428,6 +428,31 @@ function InternAttendancePage() {
     },
   });
 
+  const saveCheckoutDraftMutation = useMutation({
+    mutationFn: async ({ slotKey, file }: { slotKey: "checkout-personal" | "checkout-group"; file: File }) => {
+      if (!currentAttendance) throw new Error("Bạn cần checkin trước khi lưu ảnh tan ca.");
+      const uploaded = await uploadImage(file);
+      return saveCheckoutDraft(currentAttendance.id, {
+        timemarkImageUrl:
+          slotKey === "checkout-personal"
+            ? uploaded.url
+            : currentAttendance.checkoutTimemarkImageUrl ?? "",
+        groupImageUrl:
+          slotKey === "checkout-group"
+            ? uploaded.url
+            : currentAttendance.checkoutGroupImageUrl,
+      });
+    },
+    onSuccess: () => {
+      setMessage("Đã lưu ảnh tan ca.");
+      setErrorMessage(null);
+      queryClient.invalidateQueries({ queryKey: ["attendances", user?.id, attendanceDate] });
+    },
+    onError: (error) => {
+      setErrorMessage(error instanceof Error ? error.message : "Không thể lưu ảnh tan ca.");
+    },
+  });
+
   if (shiftsQuery.isLoading || attendancesQuery.isLoading || registeredScheduleQuery.isLoading || weeklyScheduleQuery.isLoading) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
@@ -459,7 +484,48 @@ function InternAttendancePage() {
     });
   };
 
-  const isBusy = saveMutation.isPending || checkoutMutation.isPending || uploadSlotMutation.isPending;
+  const handlePersistedSlotChange = (
+    slotKey: SlotKey,
+    file: File | undefined,
+    imageType: AttendanceImageType,
+    phase: AttendanceImagePhase,
+    expectedTime: string,
+    displayOrder: number,
+  ) => {
+    setFile(slotKey, file);
+    if (!file || !currentAttendance) return;
+    void uploadImage(file)
+      .then(({ url }) =>
+        addAttendanceImage(currentAttendance.id, {
+          imageType,
+          phase,
+          expectedTime,
+          imageUrl: url,
+          displayOrder,
+        }),
+      )
+      .then(() => {
+        setMessage("Đã tự động lưu ảnh theo mốc thời gian.");
+        setErrorMessage(null);
+        queryClient.invalidateQueries({ queryKey: ["attendances", user?.id, attendanceDate] });
+      })
+      .catch((error) => {
+        setErrorMessage(error instanceof Error ? error.message : "Không thể tự động lưu ảnh.");
+      });
+  };
+
+  const hasEnoughPersonalImagesForCheckout =
+    Boolean(currentAttendance?.checkinTimemarkImageUrl) &&
+    personalSlots.every((slot) =>
+      Boolean(savedSlotImage(currentAttendance, "PERSONAL_TIMEMARK", "DURING_SHIFT", slot.time)),
+    ) &&
+    Boolean(files["checkout-personal"] || currentAttendance?.checkoutTimemarkImageUrl || getDraft("checkout-personal"));
+
+  const isBusy =
+    saveMutation.isPending ||
+    checkoutMutation.isPending ||
+    uploadSlotMutation.isPending ||
+    saveCheckoutDraftMutation.isPending;
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -612,7 +678,16 @@ function InternAttendancePage() {
                         label={`Mốc ${slot.time}`}
                         file={files[key]}
                         imageUrl={savedSlotImage(currentAttendance, "PERSONAL_TIMEMARK", "DURING_SHIFT", slot.time)}
-                        onChange={(file) => setFile(key, file)}
+                        onChange={(file) =>
+                          handlePersistedSlotChange(
+                            key,
+                            file,
+                            "PERSONAL_TIMEMARK",
+                            "DURING_SHIFT",
+                            slot.time,
+                            index,
+                          )
+                        }
                       />
                       <Button
                         className="mt-3"
@@ -653,7 +728,7 @@ function InternAttendancePage() {
                         hint={phase === "CHECKIN" ? "Người đại diện giơ 2 ngón tay chào." : phase === "CHECKOUT" ? "Người đại diện giơ tay tạm biệt." : undefined}
                         file={files[key]}
                         imageUrl={savedSlotImage(currentAttendance, "GROUP", phase, slot.time)}
-                        onChange={(file) => setFile(key, file)}
+                        onChange={(file) => handlePersistedSlotChange(key, file, "GROUP", phase, slot.time, index)}
                       />
                       <Button
                         className="mt-3"
@@ -685,7 +760,12 @@ function InternAttendancePage() {
                 file={files["checkout-personal"]}
                 imageUrl={currentAttendance?.checkoutTimemarkImageUrl}
                 cachedUrl={getDraft("checkout-personal")}
-                onChange={(file) => handleFileChange("checkout-personal", file)}
+                onChange={(file) => {
+                  handleFileChange("checkout-personal", file);
+                  if (file && currentAttendance) {
+                    saveCheckoutDraftMutation.mutate({ slotKey: "checkout-personal", file });
+                  }
+                }}
               />
               <ImagePicker
                 label="Ảnh nhóm tan ca"
@@ -693,14 +773,19 @@ function InternAttendancePage() {
                 file={files["checkout-group"]}
                 imageUrl={currentAttendance?.checkoutGroupImageUrl}
                 cachedUrl={getDraft("checkout-group")}
-                onChange={(file) => handleFileChange("checkout-group", file)}
+                onChange={(file) => {
+                  handleFileChange("checkout-group", file);
+                  if (file && currentAttendance) {
+                    saveCheckoutDraftMutation.mutate({ slotKey: "checkout-group", file });
+                  }
+                }}
               />
             </div>
 
             <div className="space-y-2">
               <Button 
                 onClick={() => checkoutMutation.mutate()} 
-                disabled={!currentAttendance || currentAttendance.status === "CHECKED_OUT" || isBusy}
+                disabled={!currentAttendance || currentAttendance.status === "CHECKED_OUT" || !hasEnoughPersonalImagesForCheckout || isBusy}
                 className="w-full md:w-auto"
               >
                 {checkoutMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}

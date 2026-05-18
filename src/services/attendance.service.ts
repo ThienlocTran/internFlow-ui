@@ -48,6 +48,13 @@ export function checkout(attendanceId: string, payload: CheckoutPayload) {
   });
 }
 
+export function saveCheckoutDraft(attendanceId: string, payload: CheckoutPayload) {
+  return apiRequest<Attendance>(`/attendances/${attendanceId}/checkout-draft`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function addAttendanceImage(attendanceId: string, payload: AttendanceImagePayload) {
   return apiRequest<AttendanceImage>(`/attendances/${attendanceId}/images`, {
     method: "POST",
