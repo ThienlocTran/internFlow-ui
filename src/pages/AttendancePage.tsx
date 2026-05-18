@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Camera, CheckCircle2, Clock3, Eye, ImageUp, Loader2, UploadCloud } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -17,6 +17,18 @@ import { useAuthStore } from "@/store/auth-store";
 import type { Attendance, AttendanceImagePhase, AttendanceImageType, Shift } from "@/types/api";
 import { getGroupPhotoSlots, getPersonalIntervalSlots } from "@/utils/attendance-photo-rules";
 import { formatDate } from "@/utils/date-format";
+
+// --- localStorage draft helpers ---
+const DRAFT_KEY = "internflow-attendance-drafts";
+function readDrafts(): Record<string, string> {
+  try { return JSON.parse(localStorage.getItem(DRAFT_KEY) ?? "{}"); } catch { return {}; }
+}
+function writeDraft(k: string, url: string) {
+  const all = readDrafts(); all[k] = url; localStorage.setItem(DRAFT_KEY, JSON.stringify(all));
+}
+function removeDrafts(keys: string[]) {
+  const all = readDrafts(); keys.forEach((k) => delete all[k]); localStorage.setItem(DRAFT_KEY, JSON.stringify(all));
+}
 
 type SlotKey = "checkin-personal" | "checkin-group" | "checkout-personal" | "checkout-group" | string;
 
@@ -66,15 +78,17 @@ function ImagePicker({
   hint,
   file,
   imageUrl,
+  cachedUrl,
   onChange,
 }: {
   label: string;
   hint?: string;
   file?: File;
   imageUrl?: string;
+  cachedUrl?: string;
   onChange: (file: File | undefined) => void;
 }) {
-  const previewUrl = useMemo(() => (file ? URL.createObjectURL(file) : imageUrl), [file, imageUrl]);
+  const previewUrl = useMemo(() => (file ? URL.createObjectURL(file) : imageUrl ?? cachedUrl), [file, imageUrl, cachedUrl]);
 
   useEffect(() => {
     return () => {
@@ -88,7 +102,7 @@ function ImagePicker({
         <div className="relative border-b bg-white">
           <img src={previewUrl} alt={label} className="aspect-video w-full object-cover" />
           <div className="absolute right-3 top-3 rounded-full bg-slate-950/85 px-3 py-1 text-xs font-medium text-white">
-            {file ? "Ảnh vừa chọn" : "Đã lưu"}
+            {file ? "Ảnh vừa chọn" : imageUrl ? "Đã lưu" : "Đã tải lên (chưa lưu)"}
           </div>
         </div>
       )}
@@ -261,6 +275,7 @@ function InternAttendancePage() {
   const [files, setFiles] = useState<Record<SlotKey, File | undefined>>({});
   const [message, setMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [allDraftUrls, setAllDraftUrls] = useState<Record<string, string>>(readDrafts);
   const range = weekRange(attendanceDate);
 
   const shiftsQuery = useQuery({ queryKey: ["shifts"], queryFn: getShifts });
@@ -330,16 +345,24 @@ function InternAttendancePage() {
   const checkoutMutation = useMutation({
     mutationFn: async () => {
       if (!currentAttendance) throw new Error("Bạn cần checkin ca này trước.");
-      const checkoutPersonal = files["checkout-personal"];
-      if (!checkoutPersonal) throw new Error("Ảnh TimeMark tan ca là bắt buộc.");
 
-      const timemarkUpload = await uploadImage(checkoutPersonal);
+      // Ưu tiên ảnh đã lưu sẵn; nếu chưa có mới yêu cầu chọn file mới
+      const checkoutPersonalFile = files["checkout-personal"];
+      const savedTimemarkUrl = currentAttendance.checkoutTimemarkImageUrl;
+      if (!checkoutPersonalFile && !savedTimemarkUrl) {
+        throw new Error("Ảnh TimeMark tan ca là bắt buộc.");
+      }
+      const timemarkUrl = checkoutPersonalFile
+        ? (await uploadImage(checkoutPersonalFile)).url
+        : savedTimemarkUrl!;
+
       const groupFile = files["checkout-group"];
-      const groupUpload = groupFile ? await uploadImage(groupFile) : undefined;
+      const savedGroupUrl = currentAttendance.checkoutGroupImageUrl;
+      const groupUrl = groupFile ? (await uploadImage(groupFile)).url : savedGroupUrl;
 
       return checkout(currentAttendance.id, {
-        timemarkImageUrl: timemarkUpload.url,
-        groupImageUrl: groupUpload?.url,
+        timemarkImageUrl: timemarkUrl,
+        groupImageUrl: groupUrl,
       });
     },
     onSuccess: () => {
@@ -402,6 +425,21 @@ function InternAttendancePage() {
 
   const setFile = (key: SlotKey, file: File | undefined) => {
     setFiles((current) => ({ ...current, [key]: file }));
+  };
+
+  // composite key for localStorage
+  const ck = (slotKey: SlotKey) => `${user?.id ?? ""}|${attendanceDate}|${selectedShift?.id ?? ""}|${slotKey}`;
+  const getDraft = (slotKey: SlotKey) => allDraftUrls[ck(slotKey)];
+
+  // auto-upload on file select and persist URL to localStorage
+  const handleFileChange = (slotKey: SlotKey, file: File | undefined) => {
+    setFile(slotKey, file);
+    if (!file) return;
+    void uploadImage(file).then(({ url }) => {
+      const key = ck(slotKey);
+      writeDraft(key, url);
+      setAllDraftUrls((prev) => ({ ...prev, [key]: url }));
+    });
   };
 
   const isBusy = saveMutation.isPending || checkoutMutation.isPending || uploadSlotMutation.isPending;
