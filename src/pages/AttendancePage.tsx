@@ -346,19 +346,26 @@ function InternAttendancePage() {
     mutationFn: async () => {
       if (!currentAttendance) throw new Error("Bạn cần checkin ca này trước.");
 
-      // Ưu tiên ảnh đã lưu sẵn; nếu chưa có mới yêu cầu chọn file mới
+      // Ưu tiên: file vừa chọn → đã lưu trong DB → draft từ localStorage (sau F5)
       const checkoutPersonalFile = files["checkout-personal"];
       const savedTimemarkUrl = currentAttendance.checkoutTimemarkImageUrl;
-      if (!checkoutPersonalFile && !savedTimemarkUrl) {
+      const draftPersonalKey = `${user?.id ?? ""}|${attendanceDate}|${selectedShift?.id ?? ""}|checkout-personal`;
+      const draftTimemarkUrl = allDraftUrls[draftPersonalKey];
+
+      if (!checkoutPersonalFile && !savedTimemarkUrl && !draftTimemarkUrl) {
         throw new Error("Ảnh TimeMark tan ca là bắt buộc.");
       }
       const timemarkUrl = checkoutPersonalFile
         ? (await uploadImage(checkoutPersonalFile)).url
-        : savedTimemarkUrl!;
+        : savedTimemarkUrl ?? draftTimemarkUrl!;
 
       const groupFile = files["checkout-group"];
       const savedGroupUrl = currentAttendance.checkoutGroupImageUrl;
-      const groupUrl = groupFile ? (await uploadImage(groupFile)).url : savedGroupUrl;
+      const draftGroupKey = `${user?.id ?? ""}|${attendanceDate}|${selectedShift?.id ?? ""}|checkout-group`;
+      const draftGroupUrl = allDraftUrls[draftGroupKey];
+      const groupUrl = groupFile
+        ? (await uploadImage(groupFile)).url
+        : savedGroupUrl ?? draftGroupUrl;
 
       return checkout(currentAttendance.id, {
         timemarkImageUrl: timemarkUrl,
@@ -369,6 +376,17 @@ function InternAttendancePage() {
       setMessage("Checkout thành công.");
       setErrorMessage(null);
       queryClient.invalidateQueries({ queryKey: ["attendances", user?.id, attendanceDate] });
+      // Xóa draft sau khi checkout thành công
+      const keysToRemove = [
+        `${user?.id ?? ""}|${attendanceDate}|${selectedShift?.id ?? ""}|checkout-personal`,
+        `${user?.id ?? ""}|${attendanceDate}|${selectedShift?.id ?? ""}|checkout-group`,
+      ];
+      removeDrafts(keysToRemove);
+      setAllDraftUrls((prev) => {
+        const next = { ...prev };
+        keysToRemove.forEach((k) => delete next[k]);
+        return next;
+      });
     },
     onError: (error) => {
       setErrorMessage(error instanceof Error ? error.message : "Không thể checkout.");
@@ -668,14 +686,16 @@ function InternAttendancePage() {
                 hint="Bắt buộc để checkout."
                 file={files["checkout-personal"]}
                 imageUrl={currentAttendance?.checkoutTimemarkImageUrl}
-                onChange={(file) => setFile("checkout-personal", file)}
+                cachedUrl={getDraft("checkout-personal")}
+                onChange={(file) => handleFileChange("checkout-personal", file)}
               />
               <ImagePicker
                 label="Ảnh nhóm tan ca"
                 hint="Không bắt buộc nếu hôm đó chỉ có một mình."
                 file={files["checkout-group"]}
                 imageUrl={currentAttendance?.checkoutGroupImageUrl}
-                onChange={(file) => setFile("checkout-group", file)}
+                cachedUrl={getDraft("checkout-group")}
+                onChange={(file) => handleFileChange("checkout-group", file)}
               />
             </div>
 
