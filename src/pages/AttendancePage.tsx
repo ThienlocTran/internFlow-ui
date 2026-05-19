@@ -87,6 +87,34 @@ async function readPreviewDrafts() {
   return result;
 }
 
+async function readPreviewDraftFiles() {
+  const db = await openPreviewDb();
+  const result = await new Promise<Record<string, File>>((resolve, reject) => {
+    const transaction = db.transaction(PREVIEW_STORE_NAME, "readonly");
+    const request = transaction.objectStore(PREVIEW_STORE_NAME).getAllKeys();
+    request.onsuccess = async () => {
+      const keys = request.result as string[];
+      const entries = await Promise.all(
+        keys.map(
+          (key) =>
+            new Promise<[string, File] | null>((entryResolve) => {
+              const getRequest = transaction.objectStore(PREVIEW_STORE_NAME).get(key);
+              getRequest.onsuccess = () => {
+                const file = getRequest.result as File | undefined;
+                entryResolve(file ? [key, file] : null);
+              };
+              getRequest.onerror = () => entryResolve(null);
+            }),
+        ),
+      );
+      resolve(Object.fromEntries(entries.filter((entry): entry is [string, File] => Boolean(entry))));
+    };
+    request.onerror = () => reject(request.error);
+  });
+  db.close();
+  return result;
+}
+
 async function removePreviewDrafts(keys: string[]) {
   const db = await openPreviewDb();
   await new Promise<void>((resolve, reject) => {
@@ -133,6 +161,7 @@ function selectedAttendance(attendances: Attendance[] | undefined, shift: Shift 
     (attendance) =>
       attendance.shift.id === shift.id ||
       attendance.shift.code === shift.code ||
+      attendance.shift.name === shift.name ||
       (
         attendance.shift.startTime.slice(0, 5) === shift.startTime.slice(0, 5) &&
         attendance.shift.endTime.slice(0, 5) === shift.endTime.slice(0, 5)
@@ -143,6 +172,23 @@ function selectedAttendance(attendances: Attendance[] | undefined, shift: Shift 
 function isAlreadyCheckedInMessage(message: string) {
   const normalized = message.toLowerCase();
   return normalized.includes("ban da checkin ca nay") || normalized.includes("đã checkin ca này") || normalized.includes("trong ngay roi") || normalized.includes("trong ngày rồi");
+}
+
+async function resolvePersistedImageUrl(
+  uploadedFile: File | undefined,
+  draftUrl: string | undefined,
+  previewFile: File | undefined,
+) {
+  if (uploadedFile) {
+    return (await uploadImage(uploadedFile)).url;
+  }
+  if (draftUrl) {
+    return draftUrl;
+  }
+  if (previewFile) {
+    return (await uploadImage(previewFile)).url;
+  }
+  return undefined;
 }
 
 function savedSlotImage(
@@ -371,12 +417,16 @@ function InternAttendancePage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [allDraftUrls, setAllDraftUrls] = useState<Record<string, string>>(readDrafts);
   const [allPreviewDraftUrls, setAllPreviewDraftUrls] = useState<Record<string, string>>({});
+  const [allPreviewDraftFiles, setAllPreviewDraftFiles] = useState<Record<string, File>>({});
+  const [optimisticAttendance, setOptimisticAttendance] = useState<Attendance | null>(null);
   const range = weekRange(attendanceDate);
 
   useEffect(() => {
     let mounted = true;
-    void readPreviewDrafts().then((drafts) => {
-      if (mounted) setAllPreviewDraftUrls(drafts);
+    void Promise.all([readPreviewDrafts(), readPreviewDraftFiles()]).then(([drafts, files]) => {
+      if (!mounted) return;
+      setAllPreviewDraftUrls(drafts);
+      setAllPreviewDraftFiles(files);
     });
     return () => {
       mounted = false;
@@ -412,9 +462,23 @@ function InternAttendancePage() {
     () => registeredShifts.find((shift) => shift.id === selectedShiftId) ?? registeredShifts[0],
     [selectedShiftId, registeredShifts],
   );
-  const currentAttendance = selectedAttendance(attendancesQuery.data, selectedShift);
+  const queriedAttendance = selectedAttendance(attendancesQuery.data, selectedShift);
+  const currentAttendance =
+    queriedAttendance ??
+    (optimisticAttendance &&
+    selectedShift &&
+    optimisticAttendance.attendanceDate === attendanceDate &&
+    (optimisticAttendance.shift.id === selectedShift.id || optimisticAttendance.shift.code === selectedShift.code)
+      ? optimisticAttendance
+      : undefined);
   const personalSlots = selectedShift ? getPersonalIntervalSlots(selectedShift) : [];
   const groupSlots = selectedShift ? getGroupPhotoSlots(selectedShift) : [];
+
+  useEffect(() => {
+    if (queriedAttendance) {
+      setOptimisticAttendance(null);
+    }
+  }, [queriedAttendance?.id, queriedAttendance?.status]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -423,37 +487,42 @@ function InternAttendancePage() {
         throw new Error("Bạn cần đăng ký ca này trước khi điểm danh.");
       }
 
+      const checkinPersonalKey = `${user.id}|${attendanceDate}|${selectedShift.id}|checkin-personal`;
       const checkinPersonalFile = files["checkin-personal"];
-      const draftCheckinPersonalUrl = allDraftUrls[
-        `${user.id}|${attendanceDate}|${selectedShift.id}|checkin-personal`
-      ];
-      if (!checkinPersonalFile && !draftCheckinPersonalUrl) {
+      const draftCheckinPersonalUrl = allDraftUrls[checkinPersonalKey];
+      const previewCheckinPersonalFile = allPreviewDraftFiles[checkinPersonalKey];
+      if (!checkinPersonalFile && !draftCheckinPersonalUrl && !previewCheckinPersonalFile) {
         throw new Error("Ảnh TimeMark vào ca là bắt buộc.");
       }
 
-      const timemarkImageUrl = checkinPersonalFile
-        ? (await uploadImage(checkinPersonalFile)).url
-        : draftCheckinPersonalUrl!;
+      const timemarkImageUrl = await resolvePersistedImageUrl(
+        checkinPersonalFile,
+        draftCheckinPersonalUrl,
+        previewCheckinPersonalFile,
+      );
 
+      const checkinGroupKey = `${user.id}|${attendanceDate}|${selectedShift.id}|checkin-group`;
       const groupFile = files["checkin-group"];
-      const draftCheckinGroupUrl = allDraftUrls[
-        `${user.id}|${attendanceDate}|${selectedShift.id}|checkin-group`
-      ];
-      const groupImageUrl = groupFile
-        ? (await uploadImage(groupFile)).url
-        : draftCheckinGroupUrl;
+      const draftCheckinGroupUrl = allDraftUrls[checkinGroupKey];
+      const previewCheckinGroupFile = allPreviewDraftFiles[checkinGroupKey];
+      const groupImageUrl = await resolvePersistedImageUrl(
+        groupFile,
+        draftCheckinGroupUrl,
+        previewCheckinGroupFile,
+      );
 
       return checkin({
         userId: user.id,
         shiftId: selectedShift.id,
         attendanceDate,
-        timemarkImageUrl,
+        timemarkImageUrl: timemarkImageUrl!,
         groupImageUrl,
       });
     },
     onSuccess: (createdAttendance) => {
       setMessage("Checkin thành công.");
       setErrorMessage(null);
+      setOptimisticAttendance(createdAttendance);
       queryClient.setQueryData<Attendance[]>(["attendances", user?.id, attendanceDate], (current) => {
         const existing = current ?? [];
         return [
@@ -476,12 +545,39 @@ function InternAttendancePage() {
         keysToRemove.forEach((key) => delete next[key]);
         return next;
       });
+      setAllPreviewDraftUrls((prev) => {
+        const next = { ...prev };
+        keysToRemove.forEach((key) => delete next[key]);
+        return next;
+      });
+      setAllPreviewDraftFiles((prev) => {
+        const next = { ...prev };
+        keysToRemove.forEach((key) => delete next[key]);
+        return next;
+      });
+      setFiles((prev) => ({
+        ...prev,
+        ["checkin-personal"]: undefined,
+        ["checkin-group"]: undefined,
+      }));
+      void queryClient.invalidateQueries({ queryKey: ["attendances", user?.id, attendanceDate] });
     },
     onError: (error) => {
       const nextMessage = error instanceof Error ? error.message : "Không thể checkin.";
       setErrorMessage(nextMessage);
       if (isAlreadyCheckedInMessage(nextMessage)) {
-        void queryClient.invalidateQueries({ queryKey: ["attendances", user?.id, attendanceDate] });
+        void (async () => {
+          const refreshedAttendances = await queryClient.fetchQuery({
+            queryKey: ["attendances", user?.id, attendanceDate],
+            queryFn: () => getAttendances(user!.id, attendanceDate),
+          });
+          const matchedAttendance = selectedAttendance(refreshedAttendances, selectedShift);
+          if (matchedAttendance) {
+            setOptimisticAttendance(matchedAttendance);
+            setMessage("Ca này đã được checkin trước đó.");
+            setErrorMessage(null);
+          }
+        })();
       }
     },
   });
@@ -495,30 +591,37 @@ function InternAttendancePage() {
       const savedTimemarkUrl = currentAttendance.checkoutTimemarkImageUrl;
       const draftPersonalKey = `${user?.id ?? ""}|${attendanceDate}|${selectedShift?.id ?? ""}|checkout-personal`;
       const draftTimemarkUrl = allDraftUrls[draftPersonalKey];
+      const previewTimemarkFile = allPreviewDraftFiles[draftPersonalKey];
 
-      if (!checkoutPersonalFile && !savedTimemarkUrl && !draftTimemarkUrl) {
+      if (!checkoutPersonalFile && !savedTimemarkUrl && !draftTimemarkUrl && !previewTimemarkFile) {
         throw new Error("Ảnh TimeMark tan ca là bắt buộc.");
       }
-      const timemarkUrl = checkoutPersonalFile
-        ? (await uploadImage(checkoutPersonalFile)).url
-        : savedTimemarkUrl ?? draftTimemarkUrl!;
+      const timemarkUrl = await resolvePersistedImageUrl(
+        checkoutPersonalFile,
+        savedTimemarkUrl ?? draftTimemarkUrl,
+        previewTimemarkFile,
+      );
 
       const groupFile = files["checkout-group"];
       const savedGroupUrl = currentAttendance.checkoutGroupImageUrl;
       const draftGroupKey = `${user?.id ?? ""}|${attendanceDate}|${selectedShift?.id ?? ""}|checkout-group`;
       const draftGroupUrl = allDraftUrls[draftGroupKey];
-      const groupUrl = groupFile
-        ? (await uploadImage(groupFile)).url
-        : savedGroupUrl ?? draftGroupUrl;
+      const previewGroupFile = allPreviewDraftFiles[draftGroupKey];
+      const groupUrl = await resolvePersistedImageUrl(
+        groupFile,
+        savedGroupUrl ?? draftGroupUrl,
+        previewGroupFile,
+      );
 
       return checkout(currentAttendance.id, {
-        timemarkImageUrl: timemarkUrl,
+        timemarkImageUrl: timemarkUrl!,
         groupImageUrl: groupUrl,
       });
     },
-    onSuccess: () => {
+    onSuccess: (updatedAttendance) => {
       setMessage("Checkout thành công.");
       setErrorMessage(null);
+      setOptimisticAttendance(updatedAttendance);
       queryClient.invalidateQueries({ queryKey: ["attendances", user?.id, attendanceDate] });
       // Xóa draft sau khi checkout thành công
       const keysToRemove = [
@@ -528,6 +631,16 @@ function InternAttendancePage() {
       removeDrafts(keysToRemove);
       void removePreviewDrafts(keysToRemove);
       setAllDraftUrls((prev) => {
+        const next = { ...prev };
+        keysToRemove.forEach((k) => delete next[k]);
+        return next;
+      });
+      setAllPreviewDraftUrls((prev) => {
+        const next = { ...prev };
+        keysToRemove.forEach((k) => delete next[k]);
+        return next;
+      });
+      setAllPreviewDraftFiles((prev) => {
         const next = { ...prev };
         keysToRemove.forEach((k) => delete next[k]);
         return next;
@@ -631,6 +744,7 @@ function InternAttendancePage() {
     if (!file) return;
     const previewKey = ck(slotKey);
     void writePreviewDraft(previewKey, file);
+    setAllPreviewDraftFiles((prev) => ({ ...prev, [previewKey]: file }));
     setAllPreviewDraftUrls((prev) => ({ ...prev, [previewKey]: URL.createObjectURL(file) }));
     void uploadImage(file).then(({ url }) => {
       persistDraftUrl(slotKey, url);
@@ -649,6 +763,7 @@ function InternAttendancePage() {
     if (!file) return;
     const previewKey = ck(slotKey);
     void writePreviewDraft(previewKey, file);
+    setAllPreviewDraftFiles((prev) => ({ ...prev, [previewKey]: file }));
     setAllPreviewDraftUrls((prev) => ({ ...prev, [previewKey]: URL.createObjectURL(file) }));
     void (async () => {
       try {
@@ -696,7 +811,12 @@ function InternAttendancePage() {
     personalSlots.every((slot) =>
       Boolean(savedSlotImage(currentAttendance, "PERSONAL_TIMEMARK", "DURING_SHIFT", slot.time)),
     ) &&
-    Boolean(files["checkout-personal"] || currentAttendance?.checkoutTimemarkImageUrl || getDraft("checkout-personal"));
+    Boolean(
+      files["checkout-personal"] ||
+      currentAttendance?.checkoutTimemarkImageUrl ||
+      getDraft("checkout-personal") ||
+      allPreviewDraftFiles[ck("checkout-personal")],
+    );
 
   const isBusy =
     saveMutation.isPending ||
