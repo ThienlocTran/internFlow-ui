@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { BookOpenText, CalendarDays, CheckCircle2, GitCommitVertical, Loader2, Mail, Search } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
@@ -247,6 +247,15 @@ export function JournalPage() {
 
   const canEdit = !isAdmin && Boolean(currentUser?.id);
   const entries = progressQuery.data?.entries ?? [];
+
+  useEffect(() => {
+    if (!canEdit) return;
+    if (saveMutation.isPending || submitMailMutation.isPending) return;
+    setContent(currentEntry?.content ?? "");
+    setReferenceLinks(currentEntry?.referenceLinks ?? "");
+    setSelectedEntryId(currentEntry?.id ?? null);
+    setNotice(null);
+  }, [canEdit, currentEntry?.id, workDate]);
 
   if (!currentUser) return <ErrorState message="Bạn cần đăng nhập để xem nhật ký thực tập." />;
 
