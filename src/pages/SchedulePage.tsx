@@ -137,7 +137,7 @@ function AdminShiftCapacityPage() {
       </div>
 
       <Card className="bg-white/90">
-        <CardContent className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between">
+        <CardContent className="flex flex-col gap-3 p-5 md:flex-row md:items-center md:justify-between sm:p-5">
           <div>
             <p className="font-semibold">Xem đăng ký theo ngày</p>
             <p className="mt-1 text-sm text-muted-foreground">Admin chọn ngày để xem từng ca đang có những ai.</p>
@@ -166,7 +166,7 @@ function AdminShiftCapacityPage() {
             </div>
           </div>
         </div>
-        <CardContent className="grid gap-4 p-6 md:grid-cols-2 xl:grid-cols-4">
+        <CardContent className="grid gap-4 p-6 pt-8 sm:pt-6 md:grid-cols-2 xl:grid-cols-4">
           {shifts.map((shift) => (
             <div key={shift.id} className="rounded-lg border bg-white p-4 shadow-sm">
               <div className="flex items-start justify-between gap-3">
