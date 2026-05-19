@@ -127,8 +127,22 @@ function fileKey(type: AttendanceImageType, phase: AttendanceImagePhase, time: s
   return `${type}-${phase}-${time}`;
 }
 
-function selectedAttendance(attendances: Attendance[] | undefined, shiftId: string | null) {
-  return attendances?.find((attendance) => attendance.shift.id === shiftId);
+function selectedAttendance(attendances: Attendance[] | undefined, shift: Shift | undefined) {
+  if (!shift) return undefined;
+  return attendances?.find(
+    (attendance) =>
+      attendance.shift.id === shift.id ||
+      attendance.shift.code === shift.code ||
+      (
+        attendance.shift.startTime.slice(0, 5) === shift.startTime.slice(0, 5) &&
+        attendance.shift.endTime.slice(0, 5) === shift.endTime.slice(0, 5)
+      ),
+  );
+}
+
+function isAlreadyCheckedInMessage(message: string) {
+  const normalized = message.toLowerCase();
+  return normalized.includes("ban da checkin ca nay") || normalized.includes("đã checkin ca này") || normalized.includes("trong ngay roi") || normalized.includes("trong ngày rồi");
 }
 
 function savedSlotImage(
@@ -398,7 +412,7 @@ function InternAttendancePage() {
     () => registeredShifts.find((shift) => shift.id === selectedShiftId) ?? registeredShifts[0],
     [selectedShiftId, registeredShifts],
   );
-  const currentAttendance = selectedAttendance(attendancesQuery.data, selectedShift?.id ?? null);
+  const currentAttendance = selectedAttendance(attendancesQuery.data, selectedShift);
   const personalSlots = selectedShift ? getPersonalIntervalSlots(selectedShift) : [];
   const groupSlots = selectedShift ? getGroupPhotoSlots(selectedShift) : [];
 
@@ -408,28 +422,67 @@ function InternAttendancePage() {
       if (!registeredShiftIds.has(selectedShift.id)) {
         throw new Error("Bạn cần đăng ký ca này trước khi điểm danh.");
       }
-      const checkinPersonal = files["checkin-personal"];
-      if (!checkinPersonal) throw new Error("Ảnh TimeMark vào ca là bắt buộc.");
 
-      const timemarkUpload = await uploadImage(checkinPersonal);
+      const checkinPersonalFile = files["checkin-personal"];
+      const draftCheckinPersonalUrl = allDraftUrls[
+        `${user.id}|${attendanceDate}|${selectedShift.id}|checkin-personal`
+      ];
+      if (!checkinPersonalFile && !draftCheckinPersonalUrl) {
+        throw new Error("Ảnh TimeMark vào ca là bắt buộc.");
+      }
+
+      const timemarkImageUrl = checkinPersonalFile
+        ? (await uploadImage(checkinPersonalFile)).url
+        : draftCheckinPersonalUrl!;
+
       const groupFile = files["checkin-group"];
-      const groupUpload = groupFile ? await uploadImage(groupFile) : undefined;
+      const draftCheckinGroupUrl = allDraftUrls[
+        `${user.id}|${attendanceDate}|${selectedShift.id}|checkin-group`
+      ];
+      const groupImageUrl = groupFile
+        ? (await uploadImage(groupFile)).url
+        : draftCheckinGroupUrl;
 
       return checkin({
         userId: user.id,
         shiftId: selectedShift.id,
         attendanceDate,
-        timemarkImageUrl: timemarkUpload.url,
-        groupImageUrl: groupUpload?.url,
+        timemarkImageUrl,
+        groupImageUrl,
       });
     },
-    onSuccess: () => {
+    onSuccess: (createdAttendance) => {
       setMessage("Checkin thành công.");
       setErrorMessage(null);
-      queryClient.invalidateQueries({ queryKey: ["attendances", user?.id, attendanceDate] });
+      queryClient.setQueryData<Attendance[]>(["attendances", user?.id, attendanceDate], (current) => {
+        const existing = current ?? [];
+        return [
+          ...existing.filter(
+            (attendance) =>
+              attendance.id !== createdAttendance.id &&
+              attendance.shift.id !== createdAttendance.shift.id,
+          ),
+          createdAttendance,
+        ];
+      });
+      const keysToRemove = [
+        `${user?.id ?? ""}|${attendanceDate}|${selectedShift?.id ?? ""}|checkin-personal`,
+        `${user?.id ?? ""}|${attendanceDate}|${selectedShift?.id ?? ""}|checkin-group`,
+      ];
+      removeDrafts(keysToRemove);
+      void removePreviewDrafts(keysToRemove);
+      setAllDraftUrls((prev) => {
+        const next = { ...prev };
+        keysToRemove.forEach((key) => delete next[key]);
+        return next;
+      });
     },
     onError: (error) => {
-      setErrorMessage(error instanceof Error ? error.message : "Không thể checkin.");
+      const nextMessage = error instanceof Error ? error.message : "Không thể checkin.";
+      setErrorMessage(nextMessage);
+      if (isAlreadyCheckedInMessage(nextMessage)) {
+        void queryClient.invalidateQueries({ queryKey: ["attendances", user?.id, attendanceDate] });
+      }
     },
   });
 
@@ -630,10 +683,10 @@ function InternAttendancePage() {
             ),
           );
         }
-        setMessage(currentAttendance ? "?? t? ??ng l?u ?nh theo m?c th?i gian." : "?? l?u nh?p ?nh, F5 s? kh?ng m?t.");
+        setMessage(currentAttendance ? "Đã tự động lưu ảnh theo mốc thời gian." : "Đã lưu nháp ảnh, F5 sẽ không mất.");
         setErrorMessage(null);
       } catch (error) {
-        setErrorMessage(error instanceof Error ? error.message : "Kh?ng th? t? ??ng l?u ?nh.");
+        setErrorMessage(error instanceof Error ? error.message : "Không thể tự động lưu ảnh.");
       }
     })();
   };
