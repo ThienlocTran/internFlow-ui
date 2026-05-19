@@ -555,15 +555,19 @@ export function JournalPage() {
               </Card>
             )}
 
-            <Card className={isAdmin ? "hidden" : "bg-slate-950 text-white"}>
-              <CardContent className="space-y-3 p-5">
-                <div className="flex items-center gap-2 font-medium">
-                  <Mail className="h-4 w-4" />
-                  Mail cuối ngày
+            <Card className={isAdmin ? "hidden" : "bg-slate-950 text-white rounded-2xl"}>
+              <CardContent className="flex min-h-[170px] flex-col justify-center px-6 py-9">
+
+                <div className="flex items-center gap-2 text-lg font-semibold">
+                  <Mail className="h-5 w-5" />
+                  <span>Mail cuối ngày</span>
                 </div>
-                <p className="text-sm leading-6 text-slate-300">
-                  Nút gửi mail sẽ tạo file Word nhật ký, đính kèm vào mail và gửi tới bộ phận tuyển dụng theo cấu hình hệ thống.
+
+                <p className="mt-3 text-sm leading-6 text-slate-300">
+                  Nút gửi mail sẽ tạo file Word nhật ký, đính kèm vào mail
+                  và gửi tới bộ phận tuyển dụng theo cấu hình hệ thống.
                 </p>
+
               </CardContent>
             </Card>
           </div>
