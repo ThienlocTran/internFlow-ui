@@ -73,7 +73,7 @@ export function AdminDashboardPage() {
       </section>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <DashboardCard label="Tổng người dùng" value={String(data.users.length)} helper="Tài khoản trong hệ thống" trend="Đang hoạt động" icon={UsersRound} />
+        <DashboardCard label="Tổng người dùng" value={String(data.users.length)} helper="Tất cả tài khoản" trend="Hoạt động" icon={UsersRound} />
         <DashboardCard label="Sinh viên thực tập" value={String(internshipUsers)} helper="Role INTERN" trend="Có quota" icon={UsersRound} />
         <DashboardCard label="Nhóm trưởng" value={String(leaders)} helper="Quản lý nhóm" trend="Không quota" icon={ShieldCheck} />
         <DashboardCard label="Sức chứa/ngày" value={String(totalCapacity)} helper="Tổng sức chứa ca" trend="9 bạn/ca" icon={Database} />
