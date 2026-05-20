@@ -808,9 +808,15 @@ function InternAttendancePage() {
 
   const hasEnoughPersonalImagesForCheckout =
     Boolean(currentAttendance?.checkinTimemarkImageUrl) &&
-    personalSlots.every((slot) =>
-      Boolean(savedSlotImage(currentAttendance, "PERSONAL_TIMEMARK", "DURING_SHIFT", slot.time)),
-    ) &&
+    personalSlots.every((slot) => {
+      const key = fileKey("PERSONAL_TIMEMARK", "DURING_SHIFT", slot.time);
+      return Boolean(
+        savedSlotImage(currentAttendance, "PERSONAL_TIMEMARK", "DURING_SHIFT", slot.time) ||
+        files[key] ||
+        getDraft(key) ||
+        allPreviewDraftFiles[ck(key)]
+      );
+    }) &&
     Boolean(
       files["checkout-personal"] ||
       currentAttendance?.checkoutTimemarkImageUrl ||
