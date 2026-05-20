@@ -95,8 +95,8 @@ export function TopNavbar({ onMenuClick }: TopNavbarProps) {
           >
             {mobileSearchOpen ? <X className="h-5 w-5" /> : <Search className="h-5 w-5" />}
           </Button>
-          <Button variant="outline" size="icon" aria-label="Thông báo">
-            <Bell className="h-4 w-4" />
+          <Button variant="outline" size="icon" className="h-10 w-10 sm:h-[3.25rem] sm:w-[3.25rem]" aria-label="Thông báo">
+            <Bell className="h-4 w-4 sm:h-6 sm:w-6" />
           </Button>
           <div className="hidden max-w-[220px] items-center gap-3 rounded-lg border bg-white px-3 py-2 sm:flex">
             <div className="h-8 w-8 shrink-0 rounded-md bg-slate-950 text-center text-xs font-semibold leading-8 text-white">
@@ -109,8 +109,8 @@ export function TopNavbar({ onMenuClick }: TopNavbarProps) {
               </Badge>
             </div>
           </div>
-          <Button variant="ghost" size="icon" onClick={logout} aria-label="Đăng xuất">
-            <LogOut className="h-4 w-4" />
+          <Button variant="ghost" size="icon" className="h-10 w-10 sm:h-[3.25rem] sm:w-[3.25rem]" onClick={logout} aria-label="Đăng xuất">
+            <LogOut className="h-4 w-4 sm:h-6 sm:w-6" />
           </Button>
         </div>
       </div>
