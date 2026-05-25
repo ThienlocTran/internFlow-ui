@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Eye,
   BookOpenText,
   CalendarDays,
   CheckCircle2,
@@ -25,10 +26,11 @@ import {
   saveReportEntry,
   submitDailyReportMail,
 } from "@/services/report-journal.service";
+import { getAttendances } from "@/services/attendance.service";
 import { getUserSchedule } from "@/services/schedule.service";
 import { getUsers } from "@/services/user.service";
 import { useAuthStore } from "@/store/auth-store";
-import type { DailyReportEntry, ReportEntry, User } from "@/types/api";
+import type { Attendance, AttendanceImage, DailyReportEntry, ReportEntry, User } from "@/types/api";
 import { readDocx } from "@/utils/docx-reader";
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
@@ -105,6 +107,53 @@ function resolveUploadedWordPageCount(pageCount: number | null, wordCount: numbe
   return Math.max(pageCount, estimatedFromWords);
 }
 
+function fileToBase64(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result !== "string") {
+        reject(new Error("Không thể đọc file Word."));
+        return;
+      }
+      const base64 = result.split(",")[1];
+      if (!base64) {
+        reject(new Error("File Word không hợp lệ."));
+        return;
+      }
+      resolve(base64);
+    };
+    reader.onerror = () => reject(new Error("Không thể đọc file Word."));
+    reader.readAsDataURL(file);
+  });
+}
+
+function attendancePreviewImages(attendance: Attendance) {
+  const items: Array<{ key: string; label: string; url: string }> = [];
+  if (attendance.checkinTimemarkImageUrl) {
+    items.push({ key: `${attendance.id}-checkin-personal`, label: "TimeMark đầu ca", url: attendance.checkinTimemarkImageUrl });
+  }
+  if (attendance.checkinGroupImageUrl) {
+    items.push({ key: `${attendance.id}-checkin-group`, label: "Ảnh nhóm đầu ca", url: attendance.checkinGroupImageUrl });
+  }
+  attendance.images.forEach((image: AttendanceImage) => {
+    items.push({
+      key: image.id,
+      label: image.phase === "DURING_SHIFT"
+        ? `${image.imageType === "GROUP" ? "Ảnh nhóm" : "TimeMark"} giữa ca ${image.expectedTime.slice(0, 5)}`
+        : `${image.imageType === "GROUP" ? "Ảnh nhóm" : "TimeMark"} ${image.phase.toLowerCase()}`,
+      url: image.imageUrl,
+    });
+  });
+  if (attendance.checkoutTimemarkImageUrl) {
+    items.push({ key: `${attendance.id}-checkout-personal`, label: "TimeMark cuối ca", url: attendance.checkoutTimemarkImageUrl });
+  }
+  if (attendance.checkoutGroupImageUrl) {
+    items.push({ key: `${attendance.id}-checkout-group`, label: "Ảnh nhóm cuối ca", url: attendance.checkoutGroupImageUrl });
+  }
+  return items;
+}
+
 function inferRequiredPagesFromSchedules(schedules: { status: string; shift: { code: string } }[] | undefined) {
   const registered = (schedules ?? []).filter((item) => item.status === "REGISTERED");
   if (registered.length === 0) return 0;
@@ -178,6 +227,11 @@ type WordUploadState =
   | { status: "done"; fileName: string; pageCount: number | null; wordCount: number }
   | { status: "error"; message: string };
 
+type UploadedWordDocument = {
+  name: string;
+  base64: string;
+};
+
 // ─── Main component ────────────────────────────────────────────────────────────
 export function JournalPage() {
   const queryClient = useQueryClient();
@@ -191,6 +245,8 @@ export function JournalPage() {
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [wordUpload, setWordUpload] = useState<WordUploadState>({ status: "idle" });
+  const [uploadedWordDocument, setUploadedWordDocument] = useState<UploadedWordDocument | null>(null);
+  const [isReviewOpen, setIsReviewOpen] = useState(false);
   // When a Word file is uploaded and contains page metadata, use that count;
   // otherwise fall back to text-based estimation.
   const [wordFilePage, setWordFilePage] = useState<number | null>(null);
@@ -219,6 +275,11 @@ export function JournalPage() {
     queryFn: () => getUserSchedule(currentUser!.id, workDate, workDate),
     enabled: canUseStudentEditor(currentUser?.role) && Boolean(currentUser?.id) && Boolean(workDate),
   });
+  const attendancesQuery = useQuery({
+    queryKey: ["journal-attendances", currentUser?.id, workDate],
+    queryFn: () => getAttendances(currentUser!.id, workDate),
+    enabled: canUseStudentEditor(currentUser?.role) && Boolean(currentUser?.id) && Boolean(workDate),
+  });
   const revisionsQuery = useQuery({
     queryKey: ["report-revisions", selectedEntryId],
     queryFn: () => getReportRevisions(selectedEntryId!),
@@ -239,6 +300,8 @@ export function JournalPage() {
   const pageProgress = requiredPages > 0 ? Math.min(100, Math.round((draftPageCount / requiredPages) * 100)) : 0;
   const requiredWords = requiredPages * WORDS_PER_PAGE_ESTIMATE;
   const pageMarks = Array.from({ length: Math.max(requiredPages, draftPageCount, 1) }, (_, index) => index + 1);
+  const reviewAttendances = attendancesQuery.data ?? [];
+  const reviewAttachmentName = uploadedWordDocument?.name ?? `${progressQuery.data?.document.currentFileName ?? "Nhat ky thuc tap"}.docx`;
 
   // ── localStorage persistence ─────────────────────────────────────────────────
   const canEdit = !isAdmin && Boolean(currentUser?.id);
@@ -269,40 +332,61 @@ export function JournalPage() {
     },
   });
 
+  async function ensureEntryReadyForReview() {
+    if (!currentUser?.id) throw new Error("Bạn cần đăng nhập trước khi gửi mail cuối ngày.");
+    if (requiredPages <= 0) throw new Error("Ngày này chưa có ca đăng ký nên chưa thể gửi mail cuối ngày.");
+    if (!content.trim()) throw new Error("Bạn cần viết nhật ký trước khi gửi mail cuối ngày.");
+    if (draftPageCount < requiredPages) {
+      throw new Error(`Nhật ký hôm nay mới đạt ${draftPageCount}/${requiredPages} trang. Hãy viết đủ trang rồi gửi lại.`);
+    }
+    const normalizedContent = content.trim();
+    const normalizedReferenceLinks = referenceLinks.trim();
+    const needsSave =
+      !currentEntry ||
+      (currentEntry.content ?? "").trim() !== normalizedContent ||
+      (currentEntry.referenceLinks ?? "").trim() !== normalizedReferenceLinks ||
+      currentEntry.pageCount !== draftPageCount;
+
+    let entryForMail = currentEntry;
+    if (needsSave) {
+      setNotice("Đang lưu bản nhật ký mới nhất trước khi mở review...");
+      entryForMail = await saveReportEntry({
+        userId: currentUser.id,
+        workDate,
+        content,
+        referenceLinks,
+      });
+      setSelectedEntryId(entryForMail.id);
+      queryClient.invalidateQueries({ queryKey: ["report-progress", currentUser.id] });
+      if (currentUser?.id) clearDraft(currentUser.id, workDate);
+    }
+    if (!entryForMail?.enoughPages) throw new Error("Nhật ký hôm nay chưa đủ số trang yêu cầu.");
+    return entryForMail;
+  }
+
+  const prepareReviewMutation = useMutation({
+    mutationFn: async () => {
+      await ensureEntryReadyForReview();
+      await attendancesQuery.refetch();
+    },
+    onSuccess: () => {
+      setIsReviewOpen(true);
+      setNotice("Đã chuẩn bị xong bản review. Kiểm tra lại nội dung và ảnh rồi bấm gửi.");
+    },
+    onError: (error) => {
+      setNotice(error instanceof Error ? error.message : "Không thể chuẩn bị bản review.");
+    },
+  });
+
   const submitMailMutation = useMutation({
     mutationFn: async () => {
       if (!currentUser?.id) throw new Error("Bạn cần đăng nhập trước khi gửi mail cuối ngày.");
-      if (requiredPages <= 0) throw new Error("Ngày này chưa có ca đăng ký nên chưa thể gửi mail cuối ngày.");
-      if (!content.trim()) throw new Error("Bạn cần viết nhật ký trước khi gửi mail cuối ngày.");
-      if (draftPageCount < requiredPages) {
-        throw new Error(`Nhật ký hôm nay mới đạt ${draftPageCount}/${requiredPages} trang. Hãy viết đủ trang rồi gửi lại.`);
-      }
-      const normalizedContent = content.trim();
-      const normalizedReferenceLinks = referenceLinks.trim();
-      const needsSave =
-        !currentEntry ||
-        (currentEntry.content ?? "").trim() !== normalizedContent ||
-        (currentEntry.referenceLinks ?? "").trim() !== normalizedReferenceLinks ||
-        currentEntry.pageCount !== draftPageCount;
-
+      await ensureEntryReadyForReview();
       const gmailToken = await requestGmailSendToken();
-      let entryForMail = currentEntry;
-      if (needsSave) {
-        setNotice("Đang lưu bản nhật ký mới nhất trước khi gửi mail...");
-        entryForMail = await saveReportEntry({
-          userId: currentUser.id,
-          workDate,
-          content,
-          referenceLinks,
-        });
-        setSelectedEntryId(entryForMail.id);
-        queryClient.invalidateQueries({ queryKey: ["report-progress", currentUser.id] });
-        if (currentUser?.id) clearDraft(currentUser.id, workDate);
-      }
-      if (!entryForMail?.enoughPages) throw new Error("Nhật ký hôm nay chưa đủ số trang yêu cầu.");
-      return submitDailyReportMail(currentUser.id, workDate, gmailToken);
+      return submitDailyReportMail(currentUser.id, workDate, gmailToken, uploadedWordDocument);
     },
     onSuccess: (result) => {
+      setIsReviewOpen(false);
       setNotice(`Đã gửi mail tới ${result.to}, CC ${result.cc}. File đính kèm: ${result.attachmentName}`);
       queryClient.invalidateQueries({ queryKey: ["report-progress", currentUser?.id] });
       queryClient.invalidateQueries({ queryKey: ["report-journals-daily", workDate] });
@@ -321,6 +405,7 @@ export function JournalPage() {
     setWordUpload({ status: "loading" });
     try {
       const info = await readDocx(file);
+      const base64 = await fileToBase64(file);
       const resolvedPageCount = resolveUploadedWordPageCount(info.pageCount, info.wordCount);
       setWordUpload({
         status: "done",
@@ -328,6 +413,7 @@ export function JournalPage() {
         pageCount: resolvedPageCount,
         wordCount: info.wordCount,
       });
+      setUploadedWordDocument({ name: file.name, base64 });
       // Populate textarea with extracted text (if any)
       if (info.text) setContent(info.text);
       // Guard against stale DOCX metadata by comparing it with the 210-words/page estimate.
@@ -337,6 +423,7 @@ export function JournalPage() {
         status: "error",
         message: err instanceof Error ? err.message : "Không đọc được file Word.",
       });
+      setUploadedWordDocument(null);
     }
   }, []);
 
@@ -355,6 +442,7 @@ export function JournalPage() {
 
   const clearWordFile = () => {
     setWordUpload({ status: "idle" });
+    setUploadedWordDocument(null);
     setWordFilePage(null);
     setContent("");
   };
@@ -365,6 +453,8 @@ export function JournalPage() {
     setContent(entry.content ?? "");
     setReferenceLinks(entry.referenceLinks ?? "");
     setSelectedEntryId(entry.id);
+    setUploadedWordDocument(null);
+    setIsReviewOpen(false);
     setWordFilePage(null);
     setWordUpload({ status: "idle" });
     setNotice(null);
@@ -376,6 +466,8 @@ export function JournalPage() {
     setContent(item.entry.content ?? "");
     setReferenceLinks(item.entry.referenceLinks ?? "");
     setSelectedEntryId(item.entry.id);
+    setUploadedWordDocument(null);
+    setIsReviewOpen(false);
     setWordFilePage(null);
     setWordUpload({ status: "idle" });
     setNotice(null);
@@ -404,6 +496,8 @@ export function JournalPage() {
       setContent("");
       setReferenceLinks("");
     }
+    setUploadedWordDocument(null);
+    setIsReviewOpen(false);
     setWordFilePage(null);
     setWordUpload({ status: "idle" });
   }, [workDate, currentUser?.id, canEdit, currentEntry]);
@@ -770,15 +864,113 @@ export function JournalPage() {
                     type="button"
                     variant="outline"
                     className="ml-0 bg-white md:ml-2"
-                    disabled={submitMailMutation.isPending || saveMutation.isPending || dayScheduleQuery.isLoading}
-                    onClick={() => submitMailMutation.mutate()}
+                    disabled={prepareReviewMutation.isPending || submitMailMutation.isPending || saveMutation.isPending || dayScheduleQuery.isLoading || attendancesQuery.isLoading}
+                    onClick={() => prepareReviewMutation.mutate()}
                   >
-                    {submitMailMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
-                    Gửi mail cuối ngày
+                    {prepareReviewMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
+                    Review trước khi gửi
                   </Button>
                   <p className="text-xs leading-5 text-muted-foreground">
-                    Nút này sẽ tự lưu bản hiện tại, kiểm tra đủ trang rồi mới xin quyền Gmail để gửi bằng chính tài khoản của bạn.
+                    Nút này sẽ lưu bản hiện tại, mở review nội dung + ảnh + file đính kèm. Chỉ khi bạn xác nhận trong review thì mail mới được gửi.
                   </p>
+                </CardContent>
+              </Card>
+            )}
+
+            {canEdit && isReviewOpen && (
+              <Card className="bg-white/95 ring-1 ring-slate-200">
+                <CardHeader>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <CardTitle>Review Mail Cuối Ngày</CardTitle>
+                      <CardDescription>Kiểm tra lại thông tin sinh viên, ảnh trong ca và file đính kèm trước khi gửi.</CardDescription>
+                    </div>
+                    <Badge tone="muted">{uploadedWordDocument ? "Dùng file Word đã tải lên" : "Hệ thống sẽ đóng gói thành file Word"}</Badge>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                    <div className="rounded-lg border bg-slate-50 p-4">
+                      <p className="text-sm text-muted-foreground">Họ tên</p>
+                      <p className="mt-2 font-medium">{currentUser?.fullName || "Chưa có"}</p>
+                    </div>
+                    <div className="rounded-lg border bg-slate-50 p-4">
+                      <p className="text-sm text-muted-foreground">MSSV</p>
+                      <p className="mt-2 font-medium">{currentUser?.studentCode || "Chưa có"}</p>
+                    </div>
+                    <div className="rounded-lg border bg-slate-50 p-4">
+                      <p className="text-sm text-muted-foreground">Lớp / Trường</p>
+                      <p className="mt-2 font-medium">{currentUser?.studentClass || "Chưa có"}{currentUser?.school ? ` · ${currentUser.school}` : ""}</p>
+                    </div>
+                    <div className="rounded-lg border bg-slate-50 p-4">
+                      <p className="text-sm text-muted-foreground">File đính kèm</p>
+                      <p className="mt-2 break-words font-medium">{reviewAttachmentName}</p>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border bg-slate-50 p-4">
+                    <p className="text-sm font-medium">Nội dung nhật ký sẽ gửi</p>
+                    <p className="mt-2 text-sm text-muted-foreground whitespace-pre-wrap">{content.trim() || "Chưa có nội dung"}</p>
+                    {referenceLinks.trim() && (
+                      <>
+                        <p className="mt-4 text-sm font-medium">Tài liệu tham khảo</p>
+                        <p className="mt-2 text-sm text-muted-foreground whitespace-pre-wrap">{referenceLinks.trim()}</p>
+                      </>
+                    )}
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-medium">Ảnh điểm danh từ đầu đến cuối ca</p>
+                      <Badge tone="muted">{reviewAttendances.length} ca</Badge>
+                    </div>
+                    {reviewAttendances.length > 0 ? reviewAttendances.map((attendance) => {
+                      const previewImages = attendancePreviewImages(attendance);
+                      return (
+                        <div key={attendance.id} className="rounded-xl border p-4">
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                              <p className="font-medium">{attendance.shift.name}</p>
+                              <p className="mt-1 text-sm text-muted-foreground">{attendance.shift.startTime.slice(0, 5)} - {attendance.shift.endTime.slice(0, 5)}</p>
+                            </div>
+                            <Badge tone="muted">{attendance.status}</Badge>
+                          </div>
+                          {previewImages.length > 0 ? (
+                            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                              {previewImages.map((image) => (
+                                <div key={image.key} className="overflow-hidden rounded-lg border bg-white">
+                                  <img src={image.url} alt={image.label} className="h-40 w-full object-cover" />
+                                  <div className="p-3">
+                                    <p className="text-sm font-medium">{image.label}</p>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="mt-3 text-sm text-muted-foreground">Chưa có ảnh nào cho ca này.</p>
+                          )}
+                        </div>
+                      );
+                    }) : (
+                      <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
+                        Chưa tải được dữ liệu ảnh điểm danh cho ngày này.
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap gap-3">
+                    <Button type="button" variant="outline" className="bg-white" onClick={() => setIsReviewOpen(false)}>
+                      Đóng review
+                    </Button>
+                    <Button
+                      type="button"
+                      disabled={submitMailMutation.isPending || prepareReviewMutation.isPending}
+                      onClick={() => submitMailMutation.mutate()}
+                    >
+                      {submitMailMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+                      Xác nhận gửi mail
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             )}
