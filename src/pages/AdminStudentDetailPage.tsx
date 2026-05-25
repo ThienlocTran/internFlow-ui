@@ -52,7 +52,7 @@ export function AdminStudentDetailPage() {
   const detail = detailQuery.data;
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6">
+    <div className="mx-auto max-w-[1600px] space-y-6">
       <div className="flex flex-col justify-between gap-3 md:flex-row md:items-end">
         <div>
           <Button asChild variant="outline" size="sm" className="mb-4 bg-white">
@@ -125,7 +125,7 @@ export function AdminStudentDetailPage() {
                 </div>
               )}
 
-              <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+              <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_480px] 2xl:grid-cols-[minmax(0,1fr)_540px]">
                 <div className="space-y-3">
                   {day.attendances.map((attendance) => {
                     const images = imageItems(attendance);
