@@ -8,9 +8,10 @@ import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { ErrorState } from "@/components/common/ErrorState";
 import { getShifts } from "@/services/shift.service";
+import { getRolePolicies } from "@/services/role-policy.service";
 import { cancelSchedule, getScheduleCapacity, getUserSchedule, registerSchedule } from "@/services/schedule.service";
 import { useAuthStore } from "@/store/auth-store";
-import type { ScheduleCapacity, ScheduleRegistration, Shift, User } from "@/types/api";
+import type { RolePolicy, ScheduleCapacity, ScheduleRegistration, Shift, User } from "@/types/api";
 import { downloadCsv } from "@/utils/export-csv";
 import { formatDate } from "@/utils/date-format";
 
@@ -18,6 +19,10 @@ const dayNames = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 
 
 function today() {
   return toDateInputValue(new Date());
+}
+
+function isPastDate(dateText: string) {
+  return dateText < today();
 }
 
 function toDateInputValue(date: Date) {
@@ -266,8 +271,13 @@ function InternSchedulePage() {
     queryKey: ["schedule-capacity", range.start, range.end],
     queryFn: () => getScheduleCapacity(range.start, range.end),
   });
+  const rolePoliciesQuery = useQuery({
+    queryKey: ["role-policies"],
+    queryFn: getRolePolicies,
+  });
 
   const shifts = (shiftsQuery.data ?? []).slice().sort((a, b) => shiftOrder(a) - shiftOrder(b));
+  const policy: RolePolicy | null = rolePoliciesQuery.data?.find((item) => item.role === user?.role) ?? null;
   const selectedShifts = useMemo(
     () => shifts.filter((shift) => selectedShiftIds.includes(shift.id)),
     [selectedShiftIds, shifts],
@@ -275,11 +285,15 @@ function InternSchedulePage() {
   const dayRegistrations = registrationsForDay(scheduleQuery.data, selectedDate);
   const selectedDayShiftIds = new Set(dayRegistrations.map((item) => item.shift.id));
   const registeredThisWeek = (scheduleQuery.data ?? []).filter((item) => item.status === "REGISTERED").length;
-  const weeklyLimit = user?.role === "TEAM_LEADER" ? 9 : 6;
-  const dailyLimit = user?.role === "TEAM_LEADER" ? 3 : 2;
+  const weeklyLimit = policy?.targetShiftsPerWeek ?? 0;
+  const dailyLimit = policy?.maxShiftsPerDay ?? 0;
   const remainingThisWeek = Math.max(0, weeklyLimit - registeredThisWeek);
+  const selectedDateIsPast = isPastDate(selectedDate);
+  const hasPolicy = Boolean(policy);
   const canSubmit =
-    selectedShiftIds.length > 0
+    hasPolicy
+    && !selectedDateIsPast
+    && selectedShiftIds.length > 0
     && selectedShiftIds.length <= dailyLimit
     && dayRegistrations.length + selectedShiftIds.length <= dailyLimit
     && selectedShiftIds.length <= remainingThisWeek
@@ -317,7 +331,7 @@ function InternSchedulePage() {
     },
   });
 
-  if (shiftsQuery.isLoading || scheduleQuery.isLoading || capacityQuery.isLoading) {
+  if (shiftsQuery.isLoading || scheduleQuery.isLoading || capacityQuery.isLoading || rolePoliciesQuery.isLoading) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
         <LoadingSpinner className="h-8 w-8" />
@@ -325,11 +339,15 @@ function InternSchedulePage() {
     );
   }
 
-  if (shiftsQuery.error || !shiftsQuery.data) {
+  if (shiftsQuery.error || !shiftsQuery.data || rolePoliciesQuery.error) {
     return <ErrorState message="Không tải được lịch ca từ backend." />;
   }
 
   const toggleShift = (shift: Shift) => {
+    if (selectedDateIsPast) {
+      setNotice({ type: "warning", text: "NgÃ y nÃ y Ä‘Ã£ qua nÃªn khÃ´ng thá»ƒ Ä‘Äƒng kÃ½ thÃªm ca." });
+      return;
+    }
     const capacity = capacityFor(capacityQuery.data, selectedDate, shift.id);
     if (capacity?.full) {
       setNotice({ type: "warning", text: `${shift.name} đã đủ ${capacity.maxParticipants} bạn. Hãy chọn ca khác hoặc đợi có bạn rời ca.` });
@@ -418,7 +436,7 @@ function InternSchedulePage() {
               const registered = selectedDayShiftIds.has(shift.id);
               const capacity = capacityFor(capacityQuery.data, selectedDate, shift.id);
               const full = Boolean(capacity?.full);
-              const disabled = full || registered;
+              const disabled = selectedDateIsPast || full || registered;
               const registeredCount = capacity?.registeredCount ?? 0;
               const maxParticipants = capacity?.maxParticipants ?? shift.maxParticipants;
               const participants = capacity?.participants ?? [];
@@ -519,6 +537,16 @@ function InternSchedulePage() {
               Hai ca này cách nhau quá xa. Hãy chọn Ca 1 + Ca 2 hoặc Ca 3 + Ca 4 để lịch dễ theo dõi hơn.
             </p>
           )}
+          {selectedDateIsPast && (
+            <p className="rounded-md bg-amber-50 p-3 text-sm text-amber-800">
+              NgÃ y Ä‘Ã£ qua sáº½ khÃ´ng cho Ä‘Äƒng kÃ½ má»›i hoáº·c rá»i ca Ä‘á»ƒ trÃ¡nh sá»­a lá»‹ch sau khi Ä‘Ã£ Ä‘i thá»±c táº­p.
+            </p>
+          )}
+          {!policy && (
+            <p className="rounded-md bg-red-50 p-3 text-sm text-red-700">
+              Vai trÃ² cá»§a báº¡n chÆ°a Ä‘Æ°á»£c cáº¥u hÃ¬nh chÃ­nh sÃ¡ch ca nÃªn chÆ°a thá»ƒ Ä‘Äƒng kÃ½.
+            </p>
+          )}
           {notice && <p className={`rounded-md p-3 text-sm ${noticeClass}`}>{notice.text}</p>}
 
           <Button type="button" disabled={!canSubmit || mutation.isPending} onClick={() => mutation.mutate()}>
@@ -554,7 +582,7 @@ function InternSchedulePage() {
                     <Button
                       size="sm"
                       variant="outline"
-                      disabled={cancelMutation.isPending}
+                      disabled={cancelMutation.isPending || isPastDate(item.scheduleDate)}
                       onClick={() => cancelMutation.mutate(item.id)}
                     >
                       <XCircle className="h-4 w-4" />
