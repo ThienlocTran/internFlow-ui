@@ -94,6 +94,17 @@ function estimatePageCount(value: string) {
   return words === 0 ? 0 : Math.max(1, Math.ceil(words / WORDS_PER_PAGE_ESTIMATE));
 }
 
+function resolveUploadedWordPageCount(pageCount: number | null, wordCount: number) {
+  const estimatedFromWords = wordCount === 0 ? 0 : Math.max(1, Math.ceil(wordCount / WORDS_PER_PAGE_ESTIMATE));
+  if (pageCount === null) {
+    return estimatedFromWords || null;
+  }
+  if (estimatedFromWords === 0) {
+    return pageCount;
+  }
+  return Math.max(pageCount, estimatedFromWords);
+}
+
 function inferRequiredPagesFromSchedules(schedules: { status: string; shift: { code: string } }[] | undefined) {
   const registered = (schedules ?? []).filter((item) => item.status === "REGISTERED");
   if (registered.length === 0) return 0;
@@ -310,21 +321,17 @@ export function JournalPage() {
     setWordUpload({ status: "loading" });
     try {
       const info = await readDocx(file);
+      const resolvedPageCount = resolveUploadedWordPageCount(info.pageCount, info.wordCount);
       setWordUpload({
         status: "done",
         fileName: file.name,
-        pageCount: info.pageCount,
+        pageCount: resolvedPageCount,
         wordCount: info.wordCount,
       });
       // Populate textarea with extracted text (if any)
       if (info.text) setContent(info.text);
-      // Use Word's page count metadata if available; else estimate from extracted text
-      if (info.pageCount !== null) {
-        setWordFilePage(info.pageCount);
-      } else {
-        // Fall back to word-count estimate from extracted text
-        setWordFilePage(null);
-      }
+      // Guard against stale DOCX metadata by comparing it with the 210-words/page estimate.
+      setWordFilePage(resolvedPageCount);
     } catch (err) {
       setWordUpload({
         status: "error",
@@ -679,7 +686,7 @@ export function JournalPage() {
                               <p className="text-sm font-semibold">{wordUpload.fileName}</p>
                               <p className="mt-0.5 text-xs text-muted-foreground">
                                 {wordUpload.pageCount !== null
-                                  ? `${wordUpload.pageCount} trang (từ metadata Word) · ${wordUpload.wordCount} từ`
+                                  ? `${wordUpload.pageCount} trang áp dụng · ${wordUpload.wordCount} từ`
                                   : `${wordUpload.wordCount} từ · ước tính ${estimatePageCount(content)} trang`}
                               </p>
                             </div>
