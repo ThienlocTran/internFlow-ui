@@ -435,7 +435,7 @@ function InternSchedulePage() {
       </Card>
 
       <Card className="overflow-hidden bg-white/90">
-        <div className="border-b bg-slate-50 p-5">
+        <div className="border-b bg-slate-50 p-5 mb-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <CardTitle>Chọn ca cho {formatDisplayDate(selectedDate)}</CardTitle>
