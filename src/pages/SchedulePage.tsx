@@ -53,6 +53,15 @@ function weekRange(dateText: string) {
   };
 }
 
+function weeksElapsed(startDate: string | undefined, targetDate: string) {
+  if (!startDate) return 1;
+  const start = new Date(`${startDate}T00:00:00`);
+  const target = new Date(`${targetDate}T00:00:00`);
+  const diffMs = target.getTime() - start.getTime();
+  if (Number.isNaN(diffMs) || diffMs < 0) return 1;
+  return Math.floor(diffMs / (7 * 24 * 60 * 60 * 1000)) + 1;
+}
+
 function getShiftGroup(code: string) {
   if (code === "SHIFT_1" || code === "SHIFT_2") return "Ban ngày";
   if (code === "SHIFT_3" || code === "SHIFT_4") return "Buổi tối";
@@ -260,6 +269,7 @@ function InternSchedulePage() {
   const [selectedShiftIds, setSelectedShiftIds] = useState<string[]>([]);
   const [notice, setNotice] = useState<{ type: "success" | "error" | "warning"; text: string } | null>(null);
   const range = weekRange(selectedDate);
+  const quotaStartDate = user?.cohort?.startDate ?? range.start;
 
   const shiftsQuery = useQuery({ queryKey: ["shifts"], queryFn: getShifts });
   const scheduleQuery = useQuery({
@@ -270,6 +280,11 @@ function InternSchedulePage() {
   const capacityQuery = useQuery({
     queryKey: ["schedule-capacity", range.start, range.end],
     queryFn: () => getScheduleCapacity(range.start, range.end),
+  });
+  const cumulativeScheduleQuery = useQuery({
+    queryKey: ["schedule-cumulative", user?.id, quotaStartDate, range.end],
+    queryFn: () => getUserSchedule(user!.id, quotaStartDate, range.end),
+    enabled: Boolean(user?.id),
   });
   const rolePoliciesQuery = useQuery({
     queryKey: ["role-policies"],
@@ -285,9 +300,12 @@ function InternSchedulePage() {
   const dayRegistrations = registrationsForDay(scheduleQuery.data, selectedDate);
   const selectedDayShiftIds = new Set(dayRegistrations.map((item) => item.shift.id));
   const registeredThisWeek = (scheduleQuery.data ?? []).filter((item) => item.status === "REGISTERED").length;
+  const registeredCumulative = (cumulativeScheduleQuery.data ?? []).filter((item) => item.status === "REGISTERED").length;
   const weeklyLimit = policy?.targetShiftsPerWeek ?? 0;
+  const cumulativeLimit = policy ? weeksElapsed(user?.cohort?.startDate, selectedDate) * policy.targetShiftsPerWeek : 0;
   const dailyLimit = policy?.maxShiftsPerDay ?? 0;
   const remainingThisWeek = Math.max(0, weeklyLimit - registeredThisWeek);
+  const remainingCumulative = Math.max(0, cumulativeLimit - registeredCumulative);
   const selectedDateIsPast = isPastDate(selectedDate);
   const hasPolicy = Boolean(policy);
   const canSubmit =
@@ -296,7 +314,7 @@ function InternSchedulePage() {
     && selectedShiftIds.length > 0
     && selectedShiftIds.length <= dailyLimit
     && dayRegistrations.length + selectedShiftIds.length <= dailyLimit
-    && selectedShiftIds.length <= remainingThisWeek
+    && selectedShiftIds.length <= remainingCumulative
     && isAdjacent(selectedShifts);
 
   const mutation = useMutation({
@@ -331,7 +349,7 @@ function InternSchedulePage() {
     },
   });
 
-  if (shiftsQuery.isLoading || scheduleQuery.isLoading || capacityQuery.isLoading || rolePoliciesQuery.isLoading) {
+  if (shiftsQuery.isLoading || scheduleQuery.isLoading || capacityQuery.isLoading || cumulativeScheduleQuery.isLoading || rolePoliciesQuery.isLoading) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
         <LoadingSpinner className="h-8 w-8" />
@@ -382,9 +400,9 @@ function InternSchedulePage() {
         <CardHeader>
           <CardTitle>Tuần {formatDisplayDate(range.start)} - {formatDisplayDate(range.end)}</CardTitle>
           <CardDescription>
-            Tuần này còn {remainingThisWeek}/{weeklyLimit} ca có thể đăng ký.
+            Tuần này đã đăng ký {registeredThisWeek}/{weeklyLimit} ca. Quota tích lũy đến hết tuần này còn {remainingCumulative}/{cumulativeLimit} ca.
           </CardDescription>
-          <CardDescription>Nhóm trưởng được tối đa 3 ca/ngày, 9 ca/tuần. Sinh viên thường tối đa 2 ca/ngày, 6 ca/tuần.</CardDescription>
+          <CardDescription>Nếu tuần trước đăng ký chưa đủ thì bạn có thể đăng ký bù ở tuần sau trong phạm vi quota tích lũy.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-7">
           {range.days.map((date, index) => {
@@ -425,7 +443,7 @@ function InternSchedulePage() {
             </div>
             <div className="flex flex-wrap gap-2">
               <Badge tone="muted">Đã đăng ký hôm nay: {dayRegistrations.length}/{dailyLimit}</Badge>
-              <Badge tone={remainingThisWeek === 0 ? "warning" : "muted"}>Còn trong tuần: {remainingThisWeek}/{weeklyLimit}</Badge>
+              <Badge tone={remainingCumulative === 0 ? "warning" : "muted"}>Còn tích lũy: {remainingCumulative}/{cumulativeLimit}</Badge>
             </div>
           </div>
         </div>
@@ -527,9 +545,9 @@ function InternSchedulePage() {
               Ngày này bạn đã có {dayRegistrations.length} ca. Vai trò của bạn chỉ được tối đa {dailyLimit} ca/ngày.
             </p>
           )}
-          {selectedShiftIds.length > remainingThisWeek && (
+          {selectedShiftIds.length > remainingCumulative && (
             <p className="rounded-md bg-red-50 p-3 text-sm text-red-700">
-              Tuần này bạn chỉ còn {remainingThisWeek} ca có thể đăng ký. Muốn đổi lịch thì hãy rời một ca cũ trước.
+              Quota tích lũy đến hết tuần này chỉ còn {remainingCumulative} ca có thể đăng ký. Nếu tuần trước đi ít hơn 6 ca thì tuần này sẽ được đăng ký bù.
             </p>
           )}
           {selectedShiftIds.length > 1 && !isAdjacent(selectedShifts) && (
