@@ -415,6 +415,7 @@ function InternAttendancePage() {
   const [files, setFiles] = useState<Record<SlotKey, File | undefined>>({});
   const [message, setMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [recentCheckoutAttendanceId, setRecentCheckoutAttendanceId] = useState<string | null>(null);
   const [allDraftUrls, setAllDraftUrls] = useState<Record<string, string>>(readDrafts);
   const [allPreviewDraftUrls, setAllPreviewDraftUrls] = useState<Record<string, string>>({});
   const [allPreviewDraftFiles, setAllPreviewDraftFiles] = useState<Record<string, File>>({});
@@ -471,6 +472,9 @@ function InternAttendancePage() {
     (optimisticAttendance.shift.id === selectedShift.id || optimisticAttendance.shift.code === selectedShift.code)
       ? optimisticAttendance
       : undefined);
+  const justCheckedOut =
+    currentAttendance?.status === "CHECKED_OUT" &&
+    currentAttendance.id === recentCheckoutAttendanceId;
   const personalSlots = selectedShift ? getPersonalIntervalSlots(selectedShift) : [];
   const groupSlots = selectedShift ? getGroupPhotoSlots(selectedShift) : [];
 
@@ -479,6 +483,10 @@ function InternAttendancePage() {
       setOptimisticAttendance(null);
     }
   }, [queriedAttendance?.id, queriedAttendance?.status]);
+
+  useEffect(() => {
+    setRecentCheckoutAttendanceId(null);
+  }, [attendanceDate, selectedShiftId]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -522,6 +530,7 @@ function InternAttendancePage() {
     onSuccess: (createdAttendance) => {
       setMessage("Checkin thành công.");
       setErrorMessage(null);
+      setRecentCheckoutAttendanceId(null);
       setOptimisticAttendance(createdAttendance);
       queryClient.setQueryData<Attendance[]>(["attendances", user?.id, attendanceDate], (current) => {
         const existing = current ?? [];
@@ -621,6 +630,7 @@ function InternAttendancePage() {
     onSuccess: (updatedAttendance) => {
       setMessage("Checkout thành công.");
       setErrorMessage(null);
+      setRecentCheckoutAttendanceId(updatedAttendance.id);
       setOptimisticAttendance(updatedAttendance);
       queryClient.invalidateQueries({ queryKey: ["attendances", user?.id, attendanceDate] });
       // Xóa draft sau khi checkout thành công
@@ -1103,7 +1113,12 @@ function InternAttendancePage() {
                   Bạn cần checkin trước khi có thể checkout
                 </p>
               )}
-              {currentAttendance?.status === "CHECKED_OUT" && (
+              {justCheckedOut && (
+                <p className="text-sm text-emerald-600">
+                  Bạn đã checkout thành công
+                </p>
+              )}
+              {currentAttendance?.status === "CHECKED_OUT" && !justCheckedOut && (
                 <p className="text-sm text-emerald-600">
                   Bạn đã checkout ca này rồi
                 </p>
