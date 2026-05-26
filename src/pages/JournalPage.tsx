@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,10 +31,11 @@ import { getAttendances } from "@/services/attendance.service";
 import { getUserSchedule } from "@/services/schedule.service";
 import { getUsers } from "@/services/user.service";
 import { useAuthStore } from "@/store/auth-store";
-import type { Attendance, AttendanceImage, DailyReportEntry, ReportEntry, User } from "@/types/api";
+import type { Attendance, AttendanceImage, DailyReportEntry, ReportEntry, Shift, User } from "@/types/api";
 import { readDocx } from "@/utils/docx-reader";
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
+const JOURNAL_REVIEW_STORAGE_KEY = "journal_review_payload";
 
 /**
  * 210 words ≈ 1 Word page (based on empirical test: 2048 words → 8 pages in Word).
@@ -181,6 +183,35 @@ function buildMailSubject(user: User | null | undefined, completedShiftCount: nu
   return `${user?.fullName ?? "Sinh viên"}, được ${completedShiftCount} ca, ngày ${displayDate}`;
 }
 
+function formatDisplayDate(workDate: string) {
+  return new Date(`${workDate}T00:00:00`).toLocaleDateString("vi-VN");
+}
+
+function getRegisteredSchedules(schedules: { status: string; shift: Shift }[] | undefined) {
+  return (schedules ?? []).filter((item) => item.status === "REGISTERED");
+}
+
+function buildShiftSummary(
+  schedules: { status: string; shift: Shift }[] | undefined,
+  fallback: string | undefined,
+) {
+  const registered = getRegisteredSchedules(schedules);
+  if (registered.length === 0) {
+    return fallback || "Ch\u01b0a c\u00f3 ca \u0111\u0103ng k\u00fd";
+  }
+  return registered.map((item) => item.shift.name).join(", ");
+}
+
+function buildTimeSummary(
+  schedules: { status: string; shift: Shift }[] | undefined,
+  fallback: string | undefined,
+) {
+  const registered = getRegisteredSchedules(schedules);
+  if (registered.length === 0) {
+    return fallback || "Ch\u01b0a c\u00f3 khung gi\u1edd";
+  }
+  return registered.map((item) => `${item.shift.startTime.slice(0, 5)} - ${item.shift.endTime.slice(0, 5)}`).join(" \u00b7 ");
+}
 function loadGoogleScript() {
   return new Promise<void>((resolve, reject) => {
     if ((window as any).google?.accounts?.oauth2) { resolve(); return; }
@@ -234,6 +265,7 @@ type UploadedWordDocument = {
 
 // ─── Main component ────────────────────────────────────────────────────────────
 export function JournalPage() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const currentUser = useAuthStore((state) => state.user);
   const isAdmin = currentUser?.role === "ADMIN" || currentUser?.role === "MANAGER";
@@ -302,6 +334,8 @@ export function JournalPage() {
   const pageMarks = Array.from({ length: Math.max(requiredPages, draftPageCount, 1) }, (_, index) => index + 1);
   const reviewAttendances = attendancesQuery.data ?? [];
   const reviewAttachmentName = uploadedWordDocument?.name ?? `${progressQuery.data?.document.currentFileName ?? "Nhat ky thuc tap"}.docx`;
+  const reviewShiftSummary = buildShiftSummary(dayScheduleQuery.data, currentEntry?.shiftCodes);
+  const reviewTimeSummary = buildTimeSummary(dayScheduleQuery.data, currentEntry?.workTimeSummary);
 
   // ── localStorage persistence ─────────────────────────────────────────────────
   const canEdit = !isAdmin && Boolean(currentUser?.id);
@@ -364,13 +398,37 @@ export function JournalPage() {
     return entryForMail;
   }
 
+  function persistReviewPayload() {
+    sessionStorage.setItem(
+      JOURNAL_REVIEW_STORAGE_KEY,
+      JSON.stringify({
+        workDate,
+        content,
+        referenceLinks,
+        attachmentName: reviewAttachmentName,
+        uploadedWordDocument,
+        shiftSummary: reviewShiftSummary,
+        timeSummary: reviewTimeSummary,
+        student: {
+          fullName: currentUser?.fullName ?? "",
+          studentCode: currentUser?.studentCode ?? "",
+          studentClass: currentUser?.studentClass ?? "",
+          school: currentUser?.school ?? "",
+        },
+        attendances: reviewAttendances,
+      }),
+    );
+  }
+
   const prepareReviewMutation = useMutation({
     mutationFn: async () => {
       await ensureEntryReadyForReview();
       await attendancesQuery.refetch();
     },
     onSuccess: () => {
-      setIsReviewOpen(true);
+      persistReviewPayload();
+      setIsReviewOpen(false);
+      navigate("/journal/review");
       setNotice("Đã chuẩn bị xong bản review. Kiểm tra lại nội dung và ảnh rồi bấm gửi.");
     },
     onError: (error) => {
@@ -656,9 +714,135 @@ export function JournalPage() {
       {progressQuery.error && <ErrorState message="Không tải được nhật ký từ backend." />}
 
       {progressQuery.data && (
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px] 2xl:grid-cols-[minmax(0,1fr)_400px]">
+        <div className="space-y-6">
           <div className="space-y-6">
             {/* Document summary card ──────────────────────────────────── */}
+          {canEdit && isReviewOpen && (<div className="space-y-6">
+                <Card className="bg-white/95 shadow-sm ring-1 ring-slate-200">
+                  <CardHeader>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <CardTitle>{"Review Mail Cu\u1ed1i Ng\u00e0y"}</CardTitle>
+                        <CardDescription>{"Ki\u1ec3m tra l\u1ea1i th\u00f4ng tin sinh vi\u00ean, \u1ea3nh trong ca v\u00e0 file \u0111\u00ednh k\u00e8m tr\u01b0\u1edbc khi g\u1eedi."}</CardDescription>
+                      </div>
+                      <Badge tone="muted">{uploadedWordDocument ? "D\u00f9ng file Word \u0111\u00e3 t\u1ea3i l\u00ean" : "H\u1ec7 th\u1ed1ng s\u1ebd \u0111\u00f3ng g\u00f3i th\u00e0nh file Word"}</Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    {notice && <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-700">{notice}</p>}
+                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                      <div className="rounded-lg border bg-slate-50 p-4">
+                        <p className="text-sm text-muted-foreground">{"H\u1ecd t\u00ean"}</p>
+                        <p className="mt-2 font-medium">{currentUser?.fullName || "Ch\u01b0a c\u00f3"}</p>
+                      </div>
+                      <div className="rounded-lg border bg-slate-50 p-4">
+                        <p className="text-sm text-muted-foreground">MSSV</p>
+                        <p className="mt-2 font-medium">{currentUser?.studentCode || "Ch\u01b0a c\u00f3"}</p>
+                      </div>
+                      <div className="rounded-lg border bg-slate-50 p-4">
+                        <p className="text-sm text-muted-foreground">{"L\u1edbp / Tr\u01b0\u1eddng"}</p>
+                        <p className="mt-2 font-medium">{currentUser?.studentClass || "Ch\u01b0a c\u00f3"}{currentUser?.school ? ` \u00b7 ${currentUser.school}` : ""}</p>
+                      </div>
+                      <div className="rounded-lg border bg-slate-50 p-4">
+                        <p className="text-sm text-muted-foreground">{"Ngu\u1ed3n file"}</p>
+                        <p className="mt-2 break-words font-medium">{reviewAttachmentName}</p>
+                      </div>
+                      <div className="rounded-lg border bg-slate-50 p-4">
+                        <p className="text-sm text-muted-foreground">{"Ng\u00e0y"}</p>
+                        <p className="mt-2 font-medium">{formatDisplayDate(workDate)}</p>
+                      </div>
+                      <div className="rounded-lg border bg-slate-50 p-4">
+                        <p className="text-sm text-muted-foreground">{"Ca l\u00e0m"}</p>
+                        <p className="mt-2 font-medium">{reviewShiftSummary}</p>
+                      </div>
+                      <div className="rounded-lg border bg-slate-50 p-4">
+                        <p className="text-sm text-muted-foreground">{"Th\u1eddi gian"}</p>
+                        <p className="mt-2 font-medium">{reviewTimeSummary}</p>
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border bg-slate-50 p-4">
+                      <p className="text-sm font-medium">{"T\u00f3m t\u1eaft nh\u1eadt k\u00fd"}</p>
+                      <p className="mt-2 text-sm text-muted-foreground whitespace-pre-wrap">{content.trim() || "Ch\u01b0a c\u00f3 n\u1ed9i dung"}</p>
+                      {referenceLinks.trim() && (
+                        <>
+                          <p className="mt-4 text-sm font-medium">{"T\u00e0i li\u1ec7u tham kh\u1ea3o"}</p>
+                          <p className="mt-2 text-sm text-muted-foreground whitespace-pre-wrap">{referenceLinks.trim()}</p>
+                        </>
+                      )}
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm font-medium">{"\u1ea2nh \u0111i\u1ec3m danh t\u1eeb \u0111\u1ea7u \u0111\u1ebfn cu\u1ed1i ca"}</p>
+                        <Badge tone="muted">{reviewAttendances.length} ca</Badge>
+                      </div>
+                      {reviewAttendances.length > 0 ? reviewAttendances.map((attendance) => {
+                        const previewImages = attendancePreviewImages(attendance);
+                        return (
+                          <div key={attendance.id} className="rounded-xl border p-4">
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <div>
+                                <p className="font-medium">{attendance.shift.name}</p>
+                                <p className="mt-1 text-sm text-muted-foreground">{attendance.shift.startTime.slice(0, 5)} - {attendance.shift.endTime.slice(0, 5)}</p>
+                              </div>
+                              <Badge tone="muted">{attendance.status}</Badge>
+                            </div>
+                            {previewImages.length > 0 ? (
+                              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                                {previewImages.map((image) => (
+                                  <div key={image.key} className="overflow-hidden rounded-lg border bg-white">
+                                    <img src={image.url} alt={image.label} className="h-40 w-full object-cover" />
+                                    <div className="p-3">
+                                      <p className="text-sm font-medium">{image.label}</p>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="mt-3 text-sm text-muted-foreground">{"Ch\u01b0a c\u00f3 \u1ea3nh n\u00e0o cho ca n\u00e0y."}</p>
+                            )}
+                          </div>
+                        );
+                      }) : (
+                        <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
+                          {"Ch\u01b0a t\u1ea3i \u0111\u01b0\u1ee3c d\u1eef li\u1ec7u \u1ea3nh \u0111i\u1ec3m danh cho ng\u00e0y n\u00e0y."}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="rounded-xl border bg-slate-50 p-4">
+                      <p className="text-sm font-medium">{"File nh\u1eadt k\u00fd s\u1ebd g\u1eedi"}</p>
+                      <p className="mt-2 break-words text-sm text-muted-foreground">{reviewAttachmentName}</p>
+                      <p className="mt-4 text-sm font-medium">{"N\u1ed9i dung nh\u1eadt k\u00fd"}</p>
+                      <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{content.trim() || "Ch\u01b0a c\u00f3 n\u1ed9i dung"}</p>
+                      {referenceLinks.trim() && (
+                        <>
+                          <p className="mt-4 text-sm font-medium">{"T\u00e0i li\u1ec7u tham kh\u1ea3o"}</p>
+                          <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{referenceLinks.trim()}</p>
+                        </>
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap gap-3">
+                      <Button type="button" variant="outline" className="bg-white" onClick={() => setIsReviewOpen(false)}>
+                        {"\u0110\u00f3ng review"}
+                      </Button>
+                      <Button
+                        type="button"
+                        disabled={submitMailMutation.isPending || prepareReviewMutation.isPending}
+                        onClick={() => submitMailMutation.mutate()}
+                      >
+                        {submitMailMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+                        {"X\u00e1c nh\u1eadn g\u1eedi mail"}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+          </div>
+
             <Card className="bg-white/90">
               <CardHeader>
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -687,6 +871,73 @@ export function JournalPage() {
               </CardContent>
             </Card>
 
+            <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
+              <Card className="bg-white/90">
+                <CardHeader>
+                  <CardTitle>{"Timeline b\u00e0i vi\u1ebft"}</CardTitle>
+                  <CardDescription>{"B\u1ea5m t\u1eebng ng\u00e0y \u0111\u1ec3 xem n\u1ed9i dung v\u00e0 l\u1ecbch s\u1eed s\u1eeda."}</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {entries.length > 0 ? entries.map((entry) => (
+                    <button
+                      key={entry.id}
+                      type="button"
+                      className="w-full rounded-lg border bg-white p-4 text-left transition hover:bg-slate-50"
+                      onClick={() => loadEntry(entry)}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-medium">{entry.workDate}</p>
+                          <p className="mt-1 text-sm text-muted-foreground">{entry.shiftCodes || "Ch\u01b0a nh\u1eadn di\u1ec7n ca"}</p>
+                        </div>
+                        <Badge tone={entry.enoughPages ? "success" : "warning"}>{statusLabel(entry)}</Badge>
+                      </div>
+                      <p className="mt-3 line-clamp-2 text-sm text-muted-foreground">{entry.content || "Ch\u01b0a c\u00f3 n\u1ed9i dung"}</p>
+                    </button>
+                  )) : (
+                    <div className="rounded-lg border border-dashed p-8 text-center">
+                      <BookOpenText className="mx-auto h-8 w-8 text-muted-foreground" />
+                      <p className="mt-3 font-medium">{"Ch\u01b0a c\u00f3 nh\u1eadt k\u00fd"}</p>
+                      <p className="mt-1 text-sm text-muted-foreground">{"Sinh vi\u00ean l\u01b0u b\u00e0i \u0111\u1ea7u ti\u00ean th\u00ec timeline s\u1ebd hi\u1ec7n \u1edf \u0111\u00e2y."}</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card className="bg-white/90">
+                <CardHeader>
+                  <CardTitle>{"L\u1ecbch s\u1eed ch\u1ec9nh s\u1eeda"}</CardTitle>
+                  <CardDescription>{"Xem nhanh h\u00f4m nay sinh vi\u00ean \u0111\u00e3 th\u00eam/s\u1eeda g\u00ec."}</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {selectedEntryId ? (
+                    <>
+                      {revisionsQuery.isLoading && <LoadingSpinner className="h-6 w-6" />}
+                      {(revisionsQuery.data ?? []).length > 0 ? (
+                        (revisionsQuery.data ?? []).map((revision) => (
+                          <div key={revision.id} className="rounded-lg border bg-white p-4">
+                            <div className="flex items-center gap-2 text-sm font-medium">
+                              <GitCommitVertical className="h-4 w-4" />
+                              {revision.diffSummary}
+                            </div>
+                            <p className="mt-2 text-xs text-muted-foreground">{new Date(revision.createdAt).toLocaleString("vi-VN")}</p>
+                            <p className="mt-3 line-clamp-4 text-sm leading-6 text-muted-foreground">{revision.newContent}</p>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
+                          {"Entry n\u00e0y ch\u01b0a c\u00f3 l\u1ecbch s\u1eed ch\u1ec9nh s\u1eeda."}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
+                      {"Ch\u1ecdn m\u1ed9t ng\u00e0y trong timeline \u0111\u1ec3 xem l\u1ecbch s\u1eed ch\u1ec9nh s\u1eeda."}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
             {/* Student editor ────────────────────────────────────────── */}
             {canEdit && (
               <Card className="bg-white/90">
@@ -877,107 +1128,8 @@ export function JournalPage() {
               </Card>
             )}
 
-            {canEdit && isReviewOpen && (
-              <Card className="bg-white/95 ring-1 ring-slate-200">
-                <CardHeader>
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <CardTitle>Review Mail Cuối Ngày</CardTitle>
-                      <CardDescription>Kiểm tra lại thông tin sinh viên, ảnh trong ca và file đính kèm trước khi gửi.</CardDescription>
-                    </div>
-                    <Badge tone="muted">{uploadedWordDocument ? "Dùng file Word đã tải lên" : "Hệ thống sẽ đóng gói thành file Word"}</Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                    <div className="rounded-lg border bg-slate-50 p-4">
-                      <p className="text-sm text-muted-foreground">Họ tên</p>
-                      <p className="mt-2 font-medium">{currentUser?.fullName || "Chưa có"}</p>
-                    </div>
-                    <div className="rounded-lg border bg-slate-50 p-4">
-                      <p className="text-sm text-muted-foreground">MSSV</p>
-                      <p className="mt-2 font-medium">{currentUser?.studentCode || "Chưa có"}</p>
-                    </div>
-                    <div className="rounded-lg border bg-slate-50 p-4">
-                      <p className="text-sm text-muted-foreground">Lớp / Trường</p>
-                      <p className="mt-2 font-medium">{currentUser?.studentClass || "Chưa có"}{currentUser?.school ? ` · ${currentUser.school}` : ""}</p>
-                    </div>
-                    <div className="rounded-lg border bg-slate-50 p-4">
-                      <p className="text-sm text-muted-foreground">File đính kèm</p>
-                      <p className="mt-2 break-words font-medium">{reviewAttachmentName}</p>
-                    </div>
-                  </div>
-
-                  <div className="rounded-xl border bg-slate-50 p-4">
-                    <p className="text-sm font-medium">Nội dung nhật ký sẽ gửi</p>
-                    <p className="mt-2 text-sm text-muted-foreground whitespace-pre-wrap">{content.trim() || "Chưa có nội dung"}</p>
-                    {referenceLinks.trim() && (
-                      <>
-                        <p className="mt-4 text-sm font-medium">Tài liệu tham khảo</p>
-                        <p className="mt-2 text-sm text-muted-foreground whitespace-pre-wrap">{referenceLinks.trim()}</p>
-                      </>
-                    )}
-                  </div>
-
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-medium">Ảnh điểm danh từ đầu đến cuối ca</p>
-                      <Badge tone="muted">{reviewAttendances.length} ca</Badge>
-                    </div>
-                    {reviewAttendances.length > 0 ? reviewAttendances.map((attendance) => {
-                      const previewImages = attendancePreviewImages(attendance);
-                      return (
-                        <div key={attendance.id} className="rounded-xl border p-4">
-                          <div className="flex flex-wrap items-center justify-between gap-3">
-                            <div>
-                              <p className="font-medium">{attendance.shift.name}</p>
-                              <p className="mt-1 text-sm text-muted-foreground">{attendance.shift.startTime.slice(0, 5)} - {attendance.shift.endTime.slice(0, 5)}</p>
-                            </div>
-                            <Badge tone="muted">{attendance.status}</Badge>
-                          </div>
-                          {previewImages.length > 0 ? (
-                            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                              {previewImages.map((image) => (
-                                <div key={image.key} className="overflow-hidden rounded-lg border bg-white">
-                                  <img src={image.url} alt={image.label} className="h-40 w-full object-cover" />
-                                  <div className="p-3">
-                                    <p className="text-sm font-medium">{image.label}</p>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <p className="mt-3 text-sm text-muted-foreground">Chưa có ảnh nào cho ca này.</p>
-                          )}
-                        </div>
-                      );
-                    }) : (
-                      <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
-                        Chưa tải được dữ liệu ảnh điểm danh cho ngày này.
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex flex-wrap gap-3">
-                    <Button type="button" variant="outline" className="bg-white" onClick={() => setIsReviewOpen(false)}>
-                      Đóng review
-                    </Button>
-                    <Button
-                      type="button"
-                      disabled={submitMailMutation.isPending || prepareReviewMutation.isPending}
-                      onClick={() => submitMailMutation.mutate()}
-                    >
-                      {submitMailMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
-                      Xác nhận gửi mail
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          </div>
-
-          {/* Right sidebar ──────────────────────────────────────────── */}
-          <div className="space-y-6">
+            {/* Right sidebar ──────────────────────────────────────────── */}
+          <div className="hidden space-y-6">
             <Card className="bg-white/90">
               <CardHeader>
                 <CardTitle>Timeline bài viết</CardTitle>

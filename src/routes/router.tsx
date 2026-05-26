@@ -11,6 +11,7 @@ import { AdminPage } from "@/pages/AdminPage";
 import { AdminStudentDetailPage } from "@/pages/AdminStudentDetailPage";
 import { ReportsPage } from "@/pages/ReportsPage";
 import { JournalPage } from "@/pages/JournalPage";
+import { JournalReviewPage } from "@/pages/JournalReviewPage";
 
 export const router = createBrowserRouter([
   {
@@ -28,6 +29,7 @@ export const router = createBrowserRouter([
           { path: "/attendance", element: <AttendancePage /> },
           { path: "/schedule", element: <SchedulePage /> },
           { path: "/journal", element: <JournalPage /> },
+          { path: "/journal/review", element: <JournalReviewPage /> },
           {
             element: <RoleRoute allow={["TEAM_LEADER", "ADMIN", "MANAGER"]} />,
             children: [{ path: "/team", element: <TeamPage /> }],
