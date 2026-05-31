@@ -257,11 +257,11 @@ export function TeamPage() {
                         {!attendance.enoughImages && (
                           <div className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
                             {attendance.missingPersonalSlots.length > 0 && (
-                              <p>Thi?u TimeMark: {attendance.missingPersonalSlots.join(", ")}</p>
+                              <p>Thiếu TimeMark: {attendance.missingPersonalSlots.join(", ")}</p>
                             )}
                             {attendance.missingGroupSlots.length > 0 && (
                               <p className={attendance.missingPersonalSlots.length > 0 ? "mt-1" : ""}>
-                                Thi?u ?nh nh?m: {attendance.missingGroupSlots.join(", ")}
+                                Thiếu ảnh nhóm: {attendance.missingGroupSlots.join(", ")}
                               </p>
                             )}
                           </div>
