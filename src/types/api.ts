@@ -54,7 +54,7 @@ export type ShiftPayload = {
   maxParticipants: number;
   shiftOrder: number;
   displayGroup?: string;
-  nightShift?: boolean;
+  isNightShift?: boolean;
   active: boolean;
 };
 

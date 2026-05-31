@@ -81,7 +81,7 @@ function toPayload(form: ShiftForm): ShiftPayload {
     maxParticipants: Number(form.maxParticipants),
     shiftOrder: Number(form.shiftOrder),
     displayGroup: form.displayGroup.trim() || undefined,
-    nightShift: form.nightShift,
+    isNightShift: form.nightShift,
     active: form.active,
   };
 }

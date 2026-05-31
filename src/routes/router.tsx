@@ -39,10 +39,13 @@ export const router = createBrowserRouter([
             element: <RoleRoute allow={["ADMIN", "MANAGER"]} />,
             children: [
               { path: "/admin", element: <AdminPage /> },
-              { path: "/admin/shifts", element: <AdminShiftPage /> },
               { path: "/admin/students/:studentId", element: <AdminStudentDetailPage /> },
               { path: "/reports", element: <ReportsPage /> },
             ],
+          },
+          {
+            element: <RoleRoute allow={["ADMIN"]} />,
+            children: [{ path: "/admin/shifts", element: <AdminShiftPage /> }],
           },
         ],
       },
