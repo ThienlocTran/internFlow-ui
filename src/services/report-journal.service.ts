@@ -44,3 +44,10 @@ export function submitDailyReportMail(
     }),
   });
 }
+
+export function confirmDailyReportMailSent(userId: string, workDate: string) {
+  return apiRequest<MailSubmitResult>("/report-journals/confirm-mail-sent", {
+    method: "POST",
+    body: JSON.stringify({ userId, workDate }),
+  });
+}

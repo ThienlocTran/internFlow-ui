@@ -101,6 +101,12 @@ Frontend kết nối với backend API tại `VITE_API_BASE_URL`. Backend deploy
 
 Xem thêm hướng dẫn deploy tại [VERCEL_QUICK_START.md](./VERCEL_QUICK_START.md).
 
+## Image bandwidth
+
+Attendance uploads are compressed in the browser before upload. Saved images keep the full Cloudinary URL for audit/preview and use `thumbnailUrl` or a Cloudinary `c_limit,w_400,q_auto,f_auto` fallback for dashboard, list, checklist, and review grids. Full images should load only after the user opens/clicks the preview.
+
+Backend retention cleanup is disabled/dry-run by default. Frontend screens must continue to support legacy rows that only have `imageUrl`.
+
 ## Deploy
 
 Ứng dụng deploy trên Vercel với SPA rewrite (tất cả routes -> `index.html`). Xem [VERCEL_DEPLOYMENT.md](./VERCEL_DEPLOYMENT.md) và [ATTENDANCE_UPLOAD_MECHANISM.md](./ATTENDANCE_UPLOAD_MECHANISM.md) để biết thêm chi tiết.
