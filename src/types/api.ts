@@ -18,6 +18,8 @@ export type User = {
   cohort?: InternshipCohort | null;
   role: UserRole;
   active: boolean;
+  profileComplete: boolean;
+  missingProfileFields: string[];
 };
 
 export type InternshipCohort = {
