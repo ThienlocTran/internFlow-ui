@@ -19,7 +19,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}) 
     headers.set("Content-Type", "application/json");
   }
 
-  if (token && !options.skipAuth) {
+  if (token && !options.skipAuth && !headers.has("Authorization")) {
     headers.set("Authorization", `Bearer ${token}`);
   }
 

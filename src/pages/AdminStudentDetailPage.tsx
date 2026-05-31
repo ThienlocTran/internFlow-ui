@@ -8,6 +8,7 @@ import { ErrorState } from "@/components/common/ErrorState";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { getAdminStudentDetail } from "@/services/cohort.service";
 import type { AttendanceAudit, AttendanceImage } from "@/types/api";
+import { fallbackToFullImage, getFullImageUrl, getImageDisplayUrl } from "@/utils/cloudinary-image";
 import { formatDate } from "@/utils/date-format";
 
 function imageItems(attendance: AttendanceAudit) {
@@ -21,6 +22,7 @@ function imageItems(attendance: AttendanceAudit) {
     id: image.id,
     label: `${image.imageType} · ${image.phase} · ${image.expectedTime}`,
     url: image.imageUrl,
+    thumbnailUrl: image.thumbnailUrl,
   }));
   return [...legacy, ...extra];
 }
@@ -157,16 +159,23 @@ export function AdminStudentDetailPage() {
                         )}
                         {images.length > 0 ? (
                           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                            {images.map((image) => (
-                              <a key={image.id} href={image.url} target="_blank" rel="noreferrer" className="group block">
+                            {images.map((image) => {
+                              const fullUrl = getFullImageUrl(image);
+                              const displayUrl = getImageDisplayUrl(image);
+                              if (!fullUrl || !displayUrl) return null;
+                              return (
+                              <a key={image.id} href={fullUrl} target="_blank" rel="noreferrer" className="group block">
                                 <img
-                                  src={image.url}
+                                  src={displayUrl}
                                   alt={image.label}
+                                  loading="lazy"
+                                  onError={(event) => fallbackToFullImage(event, fullUrl)}
                                   className="aspect-video w-full rounded-lg border object-cover transition group-hover:opacity-80"
                                 />
                                 <p className="mt-1 truncate text-xs text-muted-foreground">{image.label}</p>
                               </a>
-                            ))}
+                              );
+                            })}
                           </div>
                         ) : (
                           <div className="mt-4 rounded-lg border border-dashed bg-white p-4 text-center text-sm text-muted-foreground">
