@@ -27,9 +27,27 @@ export function getReportRevisions(entryId: string) {
   return apiRequest<ReportRevision[]>(`/report-journals/entries/${entryId}/revisions`);
 }
 
-export function submitDailyReportMail(userId: string, workDate: string, googleAccessToken: string) {
+export function submitDailyReportMail(
+  userId: string,
+  workDate: string,
+  googleAccessToken: string,
+  uploadedDocument?: { name: string; base64: string } | null,
+) {
   return apiRequest<MailSubmitResult>("/report-journals/submit-mail", {
     method: "POST",
-    body: JSON.stringify({ userId, workDate, googleAccessToken }),
+    body: JSON.stringify({
+      userId,
+      workDate,
+      googleAccessToken,
+      uploadedDocumentName: uploadedDocument?.name,
+      uploadedDocumentBase64: uploadedDocument?.base64,
+    }),
+  });
+}
+
+export function confirmDailyReportMailSent(userId: string, workDate: string) {
+  return apiRequest<MailSubmitResult>("/report-journals/confirm-mail-sent", {
+    method: "POST",
+    body: JSON.stringify({ userId, workDate }),
   });
 }

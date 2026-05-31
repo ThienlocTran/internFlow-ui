@@ -6,7 +6,7 @@ import { TeamLeaderDashboardPage } from "@/features/dashboard/pages/TeamLeaderDa
 export function DashboardPage() {
   const user = useAuthStore((state) => state.user);
 
-  if (user?.role === "ADMIN" || user?.role === "MANAGER") {
+  if (user?.role === "ADMIN") {
     return <AdminDashboardPage />;
   }
 

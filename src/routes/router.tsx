@@ -8,9 +8,11 @@ import { AttendancePage } from "@/pages/AttendancePage";
 import { SchedulePage } from "@/pages/SchedulePage";
 import { TeamPage } from "@/pages/TeamPage";
 import { AdminPage } from "@/pages/AdminPage";
+import { AdminShiftPage } from "@/pages/AdminShiftPage";
 import { AdminStudentDetailPage } from "@/pages/AdminStudentDetailPage";
 import { ReportsPage } from "@/pages/ReportsPage";
 import { JournalPage } from "@/pages/JournalPage";
+import { JournalReviewPage } from "@/pages/JournalReviewPage";
 
 export const router = createBrowserRouter([
   {
@@ -28,17 +30,22 @@ export const router = createBrowserRouter([
           { path: "/attendance", element: <AttendancePage /> },
           { path: "/schedule", element: <SchedulePage /> },
           { path: "/journal", element: <JournalPage /> },
+          { path: "/journal/review", element: <JournalReviewPage /> },
           {
-            element: <RoleRoute allow={["TEAM_LEADER", "ADMIN", "MANAGER"]} />,
+            element: <RoleRoute allow={["TEAM_LEADER", "ADMIN"]} />,
             children: [{ path: "/team", element: <TeamPage /> }],
           },
           {
-            element: <RoleRoute allow={["ADMIN", "MANAGER"]} />,
+            element: <RoleRoute allow={["ADMIN"]} />,
             children: [
               { path: "/admin", element: <AdminPage /> },
               { path: "/admin/students/:studentId", element: <AdminStudentDetailPage /> },
               { path: "/reports", element: <ReportsPage /> },
             ],
+          },
+          {
+            element: <RoleRoute allow={["ADMIN"]} />,
+            children: [{ path: "/admin/shifts", element: <AdminShiftPage /> }],
           },
         ],
       },

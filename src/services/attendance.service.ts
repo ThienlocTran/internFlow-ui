@@ -26,6 +26,13 @@ export type AttendanceImagePayload = {
   phase: AttendanceImagePhase;
   expectedTime: string;
   imageUrl: string;
+  storageProvider?: string;
+  publicId?: string;
+  thumbnailUrl?: string;
+  fileSizeBytes?: number;
+  mimeType?: string;
+  width?: number;
+  height?: number;
   displayOrder?: number;
   note?: string;
 };
