@@ -38,6 +38,7 @@ export type Shift = {
   endTime: string;
   category: "COMPANY" | "HOME_REPORT";
   maxParticipants: number;
+  shiftOrder: number;
   active: boolean;
 };
 
@@ -65,6 +66,7 @@ export type AttendanceImage = {
   phase: AttendanceImagePhase;
   expectedTime: string;
   imageUrl: string;
+  sourceReference?: string;
   displayOrder: number;
   note?: string;
   uploadedAt: string;
