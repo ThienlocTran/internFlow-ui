@@ -9,6 +9,7 @@ import { ErrorState } from "@/components/common/ErrorState";
 import { submitDailyReportMail } from "@/services/report-journal.service";
 import { useAuthStore } from "@/store/auth-store";
 import type { Attendance, AttendanceImage } from "@/types/api";
+import { fallbackToFullImage, getFullImageUrl, getImageDisplayUrl } from "@/utils/cloudinary-image";
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
 const JOURNAL_REVIEW_STORAGE_KEY = "journal_review_payload";
@@ -40,7 +41,7 @@ function formatDisplayDate(workDate: string) {
 }
 
 function attendancePreviewImages(attendance: Attendance) {
-  const items: Array<{ key: string; label: string; url: string }> = [];
+  const items: Array<{ key: string; label: string; url: string; thumbnailUrl?: string }> = [];
   if (attendance.checkinTimemarkImageUrl) {
     items.push({ key: `${attendance.id}-checkin-personal`, label: "TimeMark đầu ca", url: attendance.checkinTimemarkImageUrl });
   }
@@ -55,6 +56,7 @@ function attendancePreviewImages(attendance: Attendance) {
           ? `${image.imageType === "GROUP" ? "Ảnh nhóm" : "TimeMark"} giữa ca ${image.expectedTime.slice(0, 5)}`
           : `${image.imageType === "GROUP" ? "Ảnh nhóm" : "TimeMark"} ${image.phase.toLowerCase()}`,
       url: image.imageUrl,
+      thumbnailUrl: image.thumbnailUrl,
     });
   });
   if (attendance.checkoutTimemarkImageUrl) {
@@ -238,14 +240,25 @@ export function JournalReviewPage() {
                   </div>
                   {previewImages.length > 0 ? (
                     <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                      {previewImages.map((image) => (
-                        <div key={image.key} className="overflow-hidden rounded-lg border bg-white">
-                          <img src={image.url} alt={image.label} className="h-48 w-full object-cover" />
+                      {previewImages.map((image) => {
+                        const fullUrl = getFullImageUrl(image);
+                        const displayUrl = getImageDisplayUrl(image);
+                        if (!fullUrl || !displayUrl) return null;
+                        return (
+                        <a key={image.key} href={fullUrl} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-lg border bg-white">
+                          <img
+                            src={displayUrl}
+                            alt={image.label}
+                            loading="lazy"
+                            onError={(event) => fallbackToFullImage(event, fullUrl)}
+                            className="h-48 w-full object-cover"
+                          />
                           <div className="p-3">
                             <p className="text-sm font-medium">{image.label}</p>
                           </div>
-                        </div>
-                      ))}
+                        </a>
+                        );
+                      })}
                     </div>
                   ) : (
                     <p className="mt-3 text-sm text-muted-foreground">Chưa có ảnh nào cho ca này.</p>

@@ -17,7 +17,7 @@ import { useAuthStore } from "@/store/auth-store";
 import type { Attendance, AttendanceImagePhase, AttendanceImageType, Shift } from "@/types/api";
 import { getGroupPhotoSlots, getPersonalIntervalSlots } from "@/utils/attendance-photo-rules";
 import { formatDate } from "@/utils/date-format";
-import { withCloudinaryTransform } from "@/utils/cloudinary-image";
+import { fallbackToFullImage, getImageDisplayUrl } from "@/utils/cloudinary-image";
 
 // --- localStorage draft helpers ---
 const DRAFT_KEY = "internflow-attendance-drafts";
@@ -206,11 +206,27 @@ function savedSlotImage(
   )?.imageUrl;
 }
 
+function savedSlotThumbnail(
+  attendance: Attendance | undefined,
+  imageType: AttendanceImageType,
+  phase: AttendanceImagePhase,
+  expectedTime: string,
+) {
+  const normalizedExpectedTime = expectedTime.slice(0, 5);
+  return attendance?.images.find(
+    (image) =>
+      image.imageType === imageType &&
+      image.phase === phase &&
+      image.expectedTime.slice(0, 5) === normalizedExpectedTime,
+  )?.thumbnailUrl;
+}
+
 function ImagePicker({
   label,
   hint,
   file,
   imageUrl,
+  thumbnailUrl,
   cachedUrl,
   onChange,
 }: {
@@ -218,6 +234,7 @@ function ImagePicker({
   hint?: string;
   file?: File;
   imageUrl?: string;
+  thumbnailUrl?: string;
   cachedUrl?: string;
   onChange: (file: File | undefined) => void;
 }) {
@@ -235,13 +252,20 @@ function ImagePicker({
     };
   }, [file]);
 
-  const previewUrl = filePreviewUrl ?? withCloudinaryTransform(imageUrl ?? cachedUrl, "c_limit,w_900,q_auto,f_auto");
+  const fullUrl = imageUrl ?? cachedUrl;
+  const previewUrl = filePreviewUrl ?? getImageDisplayUrl({ imageUrl: fullUrl, thumbnailUrl });
 
   return (
     <label className="block overflow-hidden rounded-lg border border-dashed bg-slate-50 transition-colors hover:bg-slate-100">
       {previewUrl && (
         <div className="relative border-b bg-white">
-          <img src={previewUrl} alt={label} className="aspect-video w-full object-cover" />
+          <img
+            src={previewUrl}
+            alt={label}
+            loading="lazy"
+            onError={(event) => fullUrl && fallbackToFullImage(event, fullUrl)}
+            className="aspect-video w-full object-cover"
+          />
           <div className="absolute right-3 top-3 rounded-full bg-slate-950/85 px-3 py-1 text-xs font-medium text-white">
             {file ? "Ảnh vừa chọn" : imageUrl ? "Đã lưu" : "Đã tải lên (chưa lưu)"}
           </div>
@@ -1007,6 +1031,7 @@ function InternAttendancePage() {
                         label={`Mốc ${slot.time}`}
                         file={files[key]}
                         imageUrl={savedSlotImage(currentAttendance, "PERSONAL_TIMEMARK", "DURING_SHIFT", slot.time)}
+                        thumbnailUrl={savedSlotThumbnail(currentAttendance, "PERSONAL_TIMEMARK", "DURING_SHIFT", slot.time)}
                         cachedUrl={getDraft(key) ?? getPreviewDraft(key)}
                         onChange={(file) =>
                           handlePersistedSlotChange(
@@ -1058,6 +1083,7 @@ function InternAttendancePage() {
                         hint={phase === "CHECKIN" ? "Người đại diện giơ 2 ngón tay chào." : phase === "CHECKOUT" ? "Người đại diện giơ tay tạm biệt." : undefined}
                         file={files[key]}
                         imageUrl={savedSlotImage(currentAttendance, "GROUP", phase, slot.time)}
+                        thumbnailUrl={savedSlotThumbnail(currentAttendance, "GROUP", phase, slot.time)}
                         cachedUrl={getDraft(key) ?? getPreviewDraft(key)}
                         onChange={(file) => handlePersistedSlotChange(key, file, "GROUP", phase, slot.time, index)}
                       />
