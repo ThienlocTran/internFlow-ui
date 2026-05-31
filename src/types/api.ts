@@ -39,6 +39,22 @@ export type Shift = {
   category: "COMPANY" | "HOME_REPORT";
   maxParticipants: number;
   shiftOrder: number;
+  displayGroup?: string;
+  nightShift?: boolean;
+  isNightShift?: boolean;
+  active: boolean;
+};
+
+export type ShiftPayload = {
+  code: string;
+  name: string;
+  startTime: string;
+  endTime: string;
+  category: "COMPANY" | "HOME_REPORT";
+  maxParticipants: number;
+  shiftOrder: number;
+  displayGroup?: string;
+  nightShift?: boolean;
   active: boolean;
 };
 

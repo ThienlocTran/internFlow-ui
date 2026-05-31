@@ -39,7 +39,7 @@ const navItems: NavItem[] = [
   { label: "Người dùng & nhóm", href: "/admin", icon: UsersRound, roles: ["ADMIN", "MANAGER"] },
   { label: "Kiểm tra điểm danh", href: "/attendance", icon: FileCheck2, roles: ["ADMIN", "MANAGER"] },
   { label: "Nhật ký sinh viên", href: "/journal", icon: BookOpenText, roles: ["ADMIN", "MANAGER"] },
-  { label: "Ca & sức chứa", href: "/schedule", icon: Database, roles: ["ADMIN", "MANAGER"] },
+  { label: "Ca & sức chứa", href: "/admin/shifts", icon: Database, roles: ["ADMIN", "MANAGER"] },
   { label: "Chính sách thực tập", href: "/team", icon: SlidersHorizontal, roles: ["ADMIN", "MANAGER"] },
   { label: "Báo cáo", href: "/reports", icon: BarChart3, roles: ["ADMIN", "MANAGER"] },
 ];
