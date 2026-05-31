@@ -62,15 +62,15 @@ function weeksElapsed(startDate: string | undefined, targetDate: string) {
   return Math.floor(diffMs / (7 * 24 * 60 * 60 * 1000)) + 1;
 }
 
-function getShiftGroup(code: string) {
-  if (code === "SHIFT_1" || code === "SHIFT_2") return "Ban ngày";
-  if (code === "SHIFT_3" || code === "SHIFT_4") return "Buổi tối";
-  return "Khác";
+function getShiftGroup(shift: Shift) {
+  if (shift.displayGroup) return shift.displayGroup;
+  if (shift.category === "HOME_REPORT") return "Báo cáo tại nhà";
+  if (shift.isNightShift) return "Buổi tối";
+  return "Ban ngày";
 }
 
 function shiftOrder(shift: Shift) {
-  const value = Number(shift.code.split("_").at(-1));
-  return Number.isFinite(value) ? value : 999;
+  return shift.shiftOrder;
 }
 
 function isAdjacent(shifts: Shift[]) {
@@ -128,7 +128,7 @@ function AdminShiftCapacityPage() {
         shift.name,
         shift.startTime.slice(0, 5),
         shift.endTime.slice(0, 5),
-        getShiftGroup(shift.code),
+        getShiftGroup(shift),
         shift.maxParticipants,
         shift.active ? "Đang mở" : "Tắt",
       ]),
@@ -194,7 +194,7 @@ function AdminShiftCapacityPage() {
                 <p className="text-2xl font-semibold">
                   {shift.startTime.slice(0, 5)} - {shift.endTime.slice(0, 5)}
                 </p>
-                <p className="mt-2 text-sm text-muted-foreground">{getShiftGroup(shift.code)}</p>
+                <p className="mt-2 text-sm text-muted-foreground">{getShiftGroup(shift)}</p>
               </div>
               <div className="mt-4 flex items-center justify-between rounded-md border p-3">
                 <span className="text-sm text-muted-foreground">Sức chứa</span>
@@ -223,7 +223,7 @@ function AdminShiftCapacityPage() {
                   <div>
                     <p className="font-semibold">{shift.name}</p>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      {shift.startTime.slice(0, 5)} - {shift.endTime.slice(0, 5)} · {getShiftGroup(shift.code)}
+                      {shift.startTime.slice(0, 5)} - {shift.endTime.slice(0, 5)} · {getShiftGroup(shift)}
                     </p>
                   </div>
                   <Badge tone={registeredCount >= maxParticipants ? "warning" : "muted"}>
@@ -439,7 +439,7 @@ function InternSchedulePage() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <CardTitle>Chọn ca cho {formatDisplayDate(selectedDate)}</CardTitle>
-              <CardDescription>Ca 1 + Ca 2 hoặc Ca 3 + Ca 4 được xem là liền kề.</CardDescription>
+              <CardDescription>Các ca có thứ tự liên tiếp được xem là liền kề.</CardDescription>
             </div>
             <div className="flex flex-wrap gap-2">
               <Badge tone="muted">Đã đăng ký hôm nay: {dayRegistrations.length}/{dailyLimit}</Badge>
@@ -487,7 +487,7 @@ function InternSchedulePage() {
                   <div className="flex items-center justify-between gap-3">
                     <p className="font-medium">{shift.name}</p>
                     <Badge tone={full ? "warning" : registered ? "success" : "muted"}>
-                      {full ? "Đủ chỗ" : registered ? "Đã đăng ký" : getShiftGroup(shift.code)}
+                      {full ? "Đủ chỗ" : registered ? "Đã đăng ký" : getShiftGroup(shift)}
                     </Badge>
                   </div>
                   <p className={selected ? "mt-2 text-sm text-slate-200" : "mt-2 text-sm text-muted-foreground"}>
@@ -552,7 +552,7 @@ function InternSchedulePage() {
           )}
           {selectedShiftIds.length > 1 && !isAdjacent(selectedShifts) && (
             <p className="rounded-md bg-amber-50 p-3 text-sm text-amber-800">
-              Hai ca này cách nhau quá xa. Hãy chọn Ca 1 + Ca 2 hoặc Ca 3 + Ca 4 để lịch dễ theo dõi hơn.
+              Các ca được chọn phải liền kề theo thứ tự ca.
             </p>
           )}
           {selectedDateIsPast && (
@@ -629,7 +629,7 @@ function InternSchedulePage() {
               <Info className="h-4 w-4" />
               Chọn ca liền kề
             </div>
-            <p className="mt-2 text-sm text-muted-foreground">Ca 1 + Ca 2 hoặc Ca 3 + Ca 4 là lựa chọn chuẩn.</p>
+            <p className="mt-2 text-sm text-muted-foreground">Chọn các ca có thứ tự liên tiếp để lịch dễ theo dõi.</p>
           </div>
           <div className="rounded-lg border bg-slate-50 p-4">
             <p className="font-medium">Giới hạn theo vai trò</p>
