@@ -224,7 +224,7 @@ export function AdminPage() {
                     <p className="truncate font-medium">{user.fullName}</p>
                     <p className="mt-1 truncate text-sm text-muted-foreground">{user.email}</p>
                   </div>
-                  <Badge tone={user.role === "ADMIN" || user.role === "MANAGER" ? "warning" : "muted"}>{user.role}</Badge>
+                  <Badge tone={user.role === "ADMIN" ? "warning" : "muted"}>{user.role}</Badge>
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
                   <div className="rounded-md bg-white p-2">
@@ -272,7 +272,7 @@ export function AdminPage() {
                     <td className="py-4">{user.studentClass || "Chưa có"}</td>
                     <td className="py-4">{user.cohort?.name || "Chưa gán khóa"}</td>
                     <td className="py-4">
-                      <Badge tone={user.role === "ADMIN" || user.role === "MANAGER" ? "warning" : "muted"}>{user.role}</Badge>
+                      <Badge tone={user.role === "ADMIN" ? "warning" : "muted"}>{user.role}</Badge>
                     </td>
                     <td className="py-4">
                       <Button asChild size="sm" variant="outline">

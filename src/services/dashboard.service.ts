@@ -11,8 +11,12 @@ export type DashboardSummary = {
   rolePolicies: RolePolicy[];
 };
 
-export async function getDashboardSummary(): Promise<DashboardSummary> {
-  const [users, shifts, rolePolicies] = await Promise.all([getUsers(), getShifts(), getRolePolicies()]);
+export async function getDashboardSummary(includeUsers = false): Promise<DashboardSummary> {
+  const [users, shifts, rolePolicies] = await Promise.all([
+    includeUsers ? getUsers() : Promise.resolve<User[]>([]),
+    getShifts(),
+    getRolePolicies(),
+  ]);
 
   return {
     metrics: [

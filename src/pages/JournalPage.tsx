@@ -270,7 +270,7 @@ export function JournalPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const currentUser = useAuthStore((state) => state.user);
-  const isAdmin = currentUser?.role === "ADMIN" || currentUser?.role === "MANAGER";
+  const isAdmin = currentUser?.role === "ADMIN";
   const [selectedUserId, setSelectedUserId] = useState(currentUser?.id ?? "");
   const [workDate, setWorkDate] = useState(today());
   const [selectedDailyEntry, setSelectedDailyEntry] = useState<DailyReportEntry | null>(null);

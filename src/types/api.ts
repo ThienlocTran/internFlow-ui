@@ -5,7 +5,7 @@ export type ApiResponse<T> = {
   timestamp: string;
 };
 
-export type UserRole = "INTERN" | "TEAM_LEADER" | "ADMIN" | "MANAGER";
+export type UserRole = "INTERN" | "TEAM_LEADER" | "ADMIN";
 
 export type User = {
   id: string;

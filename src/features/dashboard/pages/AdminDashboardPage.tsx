@@ -10,7 +10,7 @@ import { useDashboardSummary } from "@/features/dashboard/hooks/use-dashboard-su
 import { downloadCsv } from "@/utils/export-csv";
 
 export function AdminDashboardPage() {
-  const { data, isLoading, error } = useDashboardSummary();
+  const { data, isLoading, error } = useDashboardSummary(true);
 
   if (isLoading) {
     return (
@@ -26,7 +26,7 @@ export function AdminDashboardPage() {
 
   const internshipUsers = data.users.filter((user) => user.role === "INTERN").length;
   const leaders = data.users.filter((user) => user.role === "TEAM_LEADER").length;
-  const admins = data.users.filter((user) => user.role === "ADMIN" || user.role === "MANAGER").length;
+  const admins = data.users.filter((user) => user.role === "ADMIN").length;
   const totalCapacity = data.shifts.reduce((total, shift) => total + shift.maxParticipants, 0);
   const standardPolicy = data.rolePolicies.find((policy) => policy.role === "INTERN");
   const exportUsers = () => {
@@ -103,7 +103,7 @@ export function AdminDashboardPage() {
                     <td className="py-4 text-muted-foreground">{user.email}</td>
                     <td className="py-4">{user.studentCode || "Chưa có"}</td>
                     <td className="py-4">
-                      <Badge tone={user.role === "ADMIN" || user.role === "MANAGER" ? "warning" : "muted"}>{user.role}</Badge>
+                      <Badge tone={user.role === "ADMIN" ? "warning" : "muted"}>{user.role}</Badge>
                     </td>
                     <td className="py-4">
                       <Badge tone={user.active ? "success" : "muted"}>{user.active ? "Đang hoạt động" : "Tạm khóa"}</Badge>

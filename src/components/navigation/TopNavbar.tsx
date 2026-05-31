@@ -15,7 +15,7 @@ type TopNavbarProps = {
 export function TopNavbar({ onMenuClick }: TopNavbarProps) {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
-  const isAdmin = user?.role === "ADMIN" || user?.role === "MANAGER";
+  const isAdmin = user?.role === "ADMIN";
   const [searchType, setSearchType] = useState(isAdmin ? "studentCode" : "scheduleDate");
   const [keyword, setKeyword] = useState("");
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);

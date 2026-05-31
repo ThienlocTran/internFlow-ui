@@ -685,48 +685,6 @@ function InternAttendancePage() {
     },
   });
 
-  const uploadSlotMutation = useMutation({
-    mutationFn: async ({
-      key,
-      imageType,
-      phase,
-      expectedTime,
-      displayOrder,
-    }: {
-      key: SlotKey;
-      imageType: AttendanceImageType;
-      phase: AttendanceImagePhase;
-      expectedTime: string;
-      displayOrder: number;
-    }) => {
-      if (!currentAttendance) throw new Error("Bạn cần checkin trước khi nộp ảnh giữa giờ.");
-      const file = files[key];
-      if (!file) throw new Error("Chưa chọn ảnh.");
-      const uploaded = await uploadImage(file);
-      return addAttendanceImage(currentAttendance.id, {
-        imageType,
-        phase,
-        expectedTime,
-        imageUrl: uploaded.url,
-        storageProvider: "CLOUDINARY",
-        publicId: uploaded.publicId,
-        thumbnailUrl: uploaded.thumbnailUrl,
-        fileSizeBytes: uploaded.fileSizeBytes,
-        mimeType: uploaded.mimeType,
-        width: uploaded.width,
-        height: uploaded.height,
-        displayOrder,
-      });
-    },
-    onSuccess: () => {
-      setMessage("Đã lưu ảnh theo mốc thời gian.");
-      setErrorMessage(null);
-      queryClient.invalidateQueries({ queryKey: ["attendances", user?.id, attendanceDate] });
-    },
-    onError: (error) => {
-      setErrorMessage(error instanceof Error ? error.message : "Không thể upload ảnh.");
-    },
-  });
 
   const saveCheckoutDraftMutation = useMutation({
     mutationFn: async ({ slotKey, file }: { slotKey: "checkout-personal" | "checkout-group"; file: File }) => {
@@ -854,29 +812,8 @@ function InternAttendancePage() {
     })();
   };
 
-  const hasEnoughPersonalImagesForCheckout =
-    Boolean(currentAttendance?.checkinTimemarkImageUrl) &&
-    personalSlots.every((slot) => {
-      const key = fileKey("PERSONAL_TIMEMARK", "DURING_SHIFT", slot.time);
-      return Boolean(
-        savedSlotImage(currentAttendance, "PERSONAL_TIMEMARK", "DURING_SHIFT", slot.time) ||
-        files[key] ||
-        getDraft(key) ||
-        allPreviewDraftFiles[ck(key)]
-      );
-    }) &&
-    Boolean(
-      files["checkout-personal"] ||
-      currentAttendance?.checkoutTimemarkImageUrl ||
-      getDraft("checkout-personal") ||
-      allPreviewDraftFiles[ck("checkout-personal")],
-    );
 
-  const isBusy =
-    saveMutation.isPending ||
-    checkoutMutation.isPending ||
-    uploadSlotMutation.isPending ||
-    saveCheckoutDraftMutation.isPending;
+  const isBusy = saveMutation.isPending || checkoutMutation.isPending;
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -1044,23 +981,6 @@ function InternAttendancePage() {
                           )
                         }
                       />
-                      <Button
-                        className="mt-3"
-                        size="sm"
-                        variant="outline"
-                        disabled={!currentAttendance || uploadSlotMutation.isPending}
-                        onClick={() =>
-                          uploadSlotMutation.mutate({
-                            key,
-                            imageType: "PERSONAL_TIMEMARK",
-                            phase: "DURING_SHIFT",
-                            expectedTime: slot.time,
-                            displayOrder: index,
-                          })
-                        }
-                      >
-                        Lưu ảnh mốc này
-                      </Button>
                     </div>
                   );
                 })}
@@ -1087,23 +1007,6 @@ function InternAttendancePage() {
                         cachedUrl={getDraft(key) ?? getPreviewDraft(key)}
                         onChange={(file) => handlePersistedSlotChange(key, file, "GROUP", phase, slot.time, index)}
                       />
-                      <Button
-                        className="mt-3"
-                        size="sm"
-                        variant="outline"
-                        disabled={!currentAttendance || uploadSlotMutation.isPending}
-                        onClick={() =>
-                          uploadSlotMutation.mutate({
-                            key,
-                            imageType: "GROUP",
-                            phase,
-                            expectedTime: slot.time,
-                            displayOrder: index,
-                          })
-                        }
-                      >
-                        Lưu ảnh nhóm
-                      </Button>
                     </div>
                   );
                 })}
@@ -1142,7 +1045,7 @@ function InternAttendancePage() {
             <div className="space-y-2">
               <Button 
                 onClick={() => checkoutMutation.mutate()} 
-                disabled={!currentAttendance || currentAttendance.status === "CHECKED_OUT" || !hasEnoughPersonalImagesForCheckout || isBusy}
+                disabled={!currentAttendance || currentAttendance.status === "CHECKED_OUT" || isBusy}
                 className="w-full md:w-auto"
               >
                 {checkoutMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
@@ -1163,11 +1066,6 @@ function InternAttendancePage() {
                   Bạn đã checkout ca này rồi
                 </p>
               )}
-              {currentAttendance && currentAttendance.status !== "CHECKED_OUT" && !hasEnoughPersonalImagesForCheckout && (
-                <p className="text-sm text-amber-600">
-                  Cần đủ ảnh TimeMark giữa ca và ảnh TimeMark tan ca trước khi checkout
-                </p>
-              )}
             </div>
           </CardContent>
         </Card>
@@ -1178,6 +1076,6 @@ function InternAttendancePage() {
 
 export function AttendancePage() {
   const user = useAuthStore((state) => state.user);
-  const isAdmin = user?.role === "ADMIN" || user?.role === "MANAGER";
+  const isAdmin = user?.role === "ADMIN";
   return isAdmin ? <AdminAttendanceReviewPage /> : <InternAttendancePage />;
 }

@@ -32,11 +32,11 @@ export const router = createBrowserRouter([
           { path: "/journal", element: <JournalPage /> },
           { path: "/journal/review", element: <JournalReviewPage /> },
           {
-            element: <RoleRoute allow={["TEAM_LEADER", "ADMIN", "MANAGER"]} />,
+            element: <RoleRoute allow={["TEAM_LEADER", "ADMIN"]} />,
             children: [{ path: "/team", element: <TeamPage /> }],
           },
           {
-            element: <RoleRoute allow={["ADMIN", "MANAGER"]} />,
+            element: <RoleRoute allow={["ADMIN"]} />,
             children: [
               { path: "/admin", element: <AdminPage /> },
               { path: "/admin/students/:studentId", element: <AdminStudentDetailPage /> },

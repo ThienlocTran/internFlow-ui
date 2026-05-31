@@ -647,6 +647,6 @@ function InternSchedulePage() {
 
 export function SchedulePage() {
   const user = useAuthStore((state) => state.user);
-  const isAdmin = user?.role === "ADMIN" || user?.role === "MANAGER";
+  const isAdmin = user?.role === "ADMIN";
   return isAdmin ? <AdminShiftCapacityPage /> : <InternSchedulePage />;
 }

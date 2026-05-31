@@ -20,7 +20,6 @@ import type { AttendanceAudit } from "@/types/api";
 const roleLabels: Record<string, string> = {
   INTERN: "Sinh viên thường",
   TEAM_LEADER: "Nhóm trưởng",
-  MANAGER: "Quản lý",
   ADMIN: "Admin",
 };
 
@@ -80,8 +79,8 @@ export function TeamPage() {
 
   const standardPolicy = policies.find((policy) => policy.role === "INTERN");
   const leaderPolicy = policies.find((policy) => policy.role === "TEAM_LEADER");
-  const managementPolicies = policies.filter((policy) => policy.role === "ADMIN" || policy.role === "MANAGER");
-  const isAdmin = user?.role === "ADMIN" || user?.role === "MANAGER";
+  const managementPolicies = policies.filter((policy) => policy.role === "ADMIN");
+  const isAdmin = user?.role === "ADMIN";
   const peers = peersQuery.data ?? [];
 
   return (
