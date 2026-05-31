@@ -66,10 +66,20 @@ export type AttendanceImage = {
   phase: AttendanceImagePhase;
   expectedTime: string;
   imageUrl: string;
+  storageProvider?: string;
+  publicId?: string;
+  thumbnailUrl?: string;
+  fileSizeBytes?: number;
+  mimeType?: string;
+  width?: number;
+  height?: number;
   sourceReference?: string;
   displayOrder: number;
   note?: string;
   uploadedAt: string;
+  retentionUntil?: string;
+  deletedAt?: string;
+  deleteStatus?: string;
 };
 
 export type Attendance = {
@@ -94,6 +104,11 @@ export type ImageUpload = {
   url: string;
   publicId: string;
   originalFilename?: string;
+  thumbnailUrl?: string;
+  fileSizeBytes?: number;
+  mimeType?: string;
+  width?: number;
+  height?: number;
 };
 
 export type ScheduleRegistrationStatus = "REGISTERED" | "CANCELLED";

@@ -684,6 +684,13 @@ function InternAttendancePage() {
         phase,
         expectedTime,
         imageUrl: uploaded.url,
+        storageProvider: "CLOUDINARY",
+        publicId: uploaded.publicId,
+        thumbnailUrl: uploaded.thumbnailUrl,
+        fileSizeBytes: uploaded.fileSizeBytes,
+        mimeType: uploaded.mimeType,
+        width: uploaded.width,
+        height: uploaded.height,
         displayOrder,
       });
     },
@@ -777,14 +784,21 @@ function InternAttendancePage() {
     setAllPreviewDraftUrls((prev) => ({ ...prev, [previewKey]: URL.createObjectURL(file) }));
     void (async () => {
       try {
-        const { url } = await uploadImage(file);
-        persistDraftUrl(slotKey, url);
+        const uploaded = await uploadImage(file);
+        persistDraftUrl(slotKey, uploaded.url);
         if (currentAttendance) {
           const savedImage = await addAttendanceImage(currentAttendance.id, {
             imageType,
             phase,
             expectedTime,
-            imageUrl: url,
+            imageUrl: uploaded.url,
+            storageProvider: "CLOUDINARY",
+            publicId: uploaded.publicId,
+            thumbnailUrl: uploaded.thumbnailUrl,
+            fileSizeBytes: uploaded.fileSizeBytes,
+            mimeType: uploaded.mimeType,
+            width: uploaded.width,
+            height: uploaded.height,
             displayOrder,
           });
           queryClient.setQueryData<Attendance[]>(["attendances", user?.id, attendanceDate], (current) =>
