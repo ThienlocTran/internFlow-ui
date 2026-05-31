@@ -33,9 +33,11 @@ export function updateProfile(
     school?: string;
     phone?: string;
   },
+  token?: string | null,
 ) {
   return apiRequest<User>(`/users/${id}/profile`, {
     method: "PUT",
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     body: JSON.stringify(payload),
   });
 }
