@@ -103,6 +103,7 @@ function validate(form: ShiftForm) {
 export function AdminShiftPage() {
   const queryClient = useQueryClient();
   const [query, setQuery] = useState("");
+  const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingShiftId, setEditingShiftId] = useState<string | null>(null);
   const [form, setForm] = useState<ShiftForm>(emptyForm);
   const [message, setMessage] = useState<string | null>(null);
@@ -114,6 +115,15 @@ export function AdminShiftPage() {
     setEditingShiftId(null);
     setForm(emptyForm);
     setFormError(null);
+    setIsFormOpen(false);
+  };
+
+  const openCreateForm = () => {
+    setEditingShiftId(null);
+    setForm(emptyForm);
+    setFormError(null);
+    setMessage(null);
+    setIsFormOpen(true);
   };
 
   const saveMutation = useMutation({
@@ -161,6 +171,7 @@ export function AdminShiftPage() {
     setForm(toForm(shift));
     setFormError(null);
     setMessage(null);
+    setIsFormOpen(true);
   };
 
   return (
@@ -170,19 +181,30 @@ export function AdminShiftPage() {
           <h1 className="text-3xl font-semibold tracking-normal">Quản lý ca</h1>
           <p className="mt-2 text-sm text-muted-foreground">Tạo, sửa và bật/tắt ca thực tập dùng cho lịch đăng ký.</p>
         </div>
-        <Button variant="outline" onClick={() => shiftsQuery.refetch()} disabled={shiftsQuery.isFetching}>
+        <div className="flex gap-2">
+          <Button onClick={openCreateForm}>
+            <Plus className="h-4 w-4" />
+            Tạo ca
+          </Button>
+          <Button variant="outline" onClick={() => shiftsQuery.refetch()} disabled={shiftsQuery.isFetching}>
           <RefreshCw className="h-4 w-4" />
           Tải lại
-        </Button>
+          </Button>
+        </div>
       </div>
 
       {message && <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{message}</div>}
 
-      <div className="grid gap-6 xl:grid-cols-[420px_1fr]">
-        <Card className="bg-white/90">
-          <CardHeader>
+      <div className={isFormOpen ? "grid gap-6 xl:grid-cols-[420px_1fr]" : "grid gap-6"}>
+        {isFormOpen && <Card className="bg-white/90">
+          <CardHeader className="flex flex-row items-start justify-between gap-3">
+            <div className="space-y-1.5">
             <CardTitle>{editingShiftId ? "Sửa ca" : "Tạo ca"}</CardTitle>
             <CardDescription>Điền thông tin ca, slot, nhóm hiển thị và trạng thái hoạt động.</CardDescription>
+            </div>
+            <Button size="icon" variant="ghost" onClick={resetForm} disabled={saveMutation.isPending} aria-label="Đóng form">
+              <X className="h-4 w-4" />
+            </Button>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2">
@@ -261,7 +283,7 @@ export function AdminShiftPage() {
               )}
             </div>
           </CardContent>
-        </Card>
+        </Card>}
 
         <Card className="bg-white/90">
           <CardHeader>

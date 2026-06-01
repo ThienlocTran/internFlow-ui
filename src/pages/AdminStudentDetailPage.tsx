@@ -1,5 +1,5 @@
 import { Link, useParams } from "react-router-dom";
-import { AlertTriangle, ArrowLeft, BookOpenText, Image as ImageIcon, UserRound } from "lucide-react";
+import { AlertTriangle, ArrowLeft, BookOpenText, ChevronRight, Image as ImageIcon, UserRound } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,8 +27,22 @@ function imageItems(attendance: AttendanceAudit) {
   return [...legacy, ...extra];
 }
 
+function missingEvidenceText(day: { missingPersonalImages: number; missingGroupImages: number; missingReportPages: number }) {
+  const missingImages: string[] = [];
+  if (day.missingPersonalImages > 0) missingImages.push(`${day.missingPersonalImages} ảnh cá nhân`);
+  if (day.missingGroupImages > 0) missingImages.push(`${day.missingGroupImages} ảnh nhóm`);
+
+  if (missingImages.length === 0 && day.missingReportPages > 0) {
+    return `Ảnh đã đủ, chỉ thiếu file báo cáo (${day.missingReportPages} trang).`;
+  }
+
+  const parts = [...missingImages];
+  if (day.missingReportPages > 0) parts.push(`${day.missingReportPages} trang báo cáo`);
+  return `Thiếu ${parts.join(", ")}.`;
+}
+
 export function AdminStudentDetailPage() {
-  const { studentId } = useParams();
+  const { studentId, workDate } = useParams();
   const detailQuery = useQuery({
     queryKey: ["admin-student-detail", studentId],
     queryFn: () => getAdminStudentDetail(studentId!),
@@ -52,6 +66,7 @@ export function AdminStudentDetailPage() {
   }
 
   const detail = detailQuery.data;
+  const selectedDay = workDate ? detail.workDays.find((day) => day.workDate === workDate) ?? null : null;
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-6">
@@ -96,11 +111,62 @@ export function AdminStudentDetailPage() {
 
       <Card className="bg-white/90">
         <CardHeader>
-          <CardTitle>Các ngày đã đi</CardTitle>
-          <CardDescription>Mỗi ngày hiển thị ca đã điểm danh, ảnh còn thiếu và tình trạng nhật ký.</CardDescription>
+          <CardTitle>{workDate ? "Chi tiết ngày đi" : "Các ngày đã đi"}</CardTitle>
+          <CardDescription>
+            {workDate ? "Ảnh điểm danh và nhật ký thực tập của ngày đã chọn." : "Danh sách ngày đã đi, ca đi và trạng thái minh chứng."}
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {detail.workDays.map((day) => (
+          {!workDate && detail.workDays.length > 0 && (
+            <div className="overflow-hidden rounded-xl border bg-white">
+              <div className="hidden grid-cols-[1.1fr_1fr_1fr_48px] gap-3 border-b bg-slate-50 px-4 py-3 text-sm font-medium text-muted-foreground md:grid">
+                <span>Ngày đi</span>
+                <span>Ca đi</span>
+                <span>Trạng thái</span>
+                <span />
+              </div>
+              {detail.workDays.map((day) => {
+                const isComplete = day.enoughImages && day.enoughReportPages;
+                return (
+                  <Link
+                    key={day.workDate}
+                    to={`/admin/students/${studentId}/days/${day.workDate}`}
+                    className="grid w-full grid-cols-1 items-center gap-3 border-b bg-white px-4 py-4 text-left last:border-b-0 hover:bg-slate-50 md:grid-cols-[1.1fr_1fr_1fr_48px]"
+                  >
+                    <div>
+                      <p className="font-semibold">{formatDate(day.workDate)}</p>
+                      <p className="mt-1 text-sm text-muted-foreground">Báo cáo {day.submittedReportPages}/{day.requiredReportPages} trang</p>
+                    </div>
+                    <div className="text-sm">
+                      <p className="font-medium">{day.attendances.map((attendance) => attendance.shiftName).join(", ") || "Chưa có ca"}</p>
+                      <p className="mt-1 text-muted-foreground">{day.attendances.length} ca</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Badge tone={isComplete ? "success" : "warning"}>{isComplete ? "Đủ" : "Thiếu"}</Badge>
+                      {!day.enoughImages && <Badge tone="warning">Thiếu ảnh</Badge>}
+                      {!day.enoughReportPages && <Badge tone="warning">Thiếu file báo cáo</Badge>}
+                    </div>
+                    <ChevronRight className="h-4 w-4 justify-self-end text-muted-foreground" />
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+
+          {workDate && (
+            <Button asChild variant="outline" size="sm" className="bg-white">
+              <Link to={`/admin/students/${studentId}`}>
+                <ArrowLeft className="h-4 w-4" />
+                Quay lại danh sách ngày
+              </Link>
+            </Button>
+          )}
+
+          {workDate && !selectedDay && (
+            <ErrorState message="Không tìm thấy ngày thực tập này." />
+          )}
+
+          {selectedDay && ((day: NonNullable<typeof selectedDay>) => (
             <div key={day.workDate} className="rounded-xl border bg-white p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -112,7 +178,7 @@ export function AdminStudentDetailPage() {
                 <div className="flex flex-wrap gap-2">
                   <Badge tone={day.enoughImages ? "success" : "warning"}>{day.enoughImages ? "Đủ ảnh" : "Thiếu ảnh"}</Badge>
                   <Badge tone={day.enoughReportPages ? "success" : "warning"}>
-                    {day.enoughReportPages ? "Đủ báo cáo" : `Thiếu ${day.missingReportPages} trang`}
+                    {day.enoughReportPages ? "Đủ báo cáo" : "Thiếu file báo cáo"}
                   </Badge>
                 </div>
               </div>
@@ -120,10 +186,7 @@ export function AdminStudentDetailPage() {
               {(!day.enoughImages || !day.enoughReportPages) && (
                 <div className="mt-3 flex items-start gap-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
                   <AlertTriangle className="mt-0.5 h-4 w-4" />
-                  <span>
-                    Thiếu {day.missingPersonalImages} ảnh cá nhân, {day.missingGroupImages} ảnh nhóm
-                    {day.missingReportPages > 0 ? ` và ${day.missingReportPages} trang báo cáo.` : "."}
-                  </span>
+                  <span>{missingEvidenceText(day)}</span>
                 </div>
               )}
 
@@ -216,9 +279,9 @@ export function AdminStudentDetailPage() {
                 </div>
               </div>
             </div>
-          ))}
+          ))(selectedDay)}
 
-          {detail.workDays.length === 0 && (
+          {!workDate && detail.workDays.length === 0 && (
             <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
               <UserRound className="mx-auto mb-3 h-8 w-8" />
               Sinh viên này chưa có ngày thực tập nào.
