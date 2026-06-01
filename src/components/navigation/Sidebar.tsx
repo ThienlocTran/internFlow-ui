@@ -27,6 +27,7 @@ type NavItem = {
   href: string;
   icon: typeof LayoutDashboard;
   roles?: UserRole[];
+  exact?: boolean;
 };
 
 const navItems: NavItem[] = [
@@ -35,19 +36,19 @@ const navItems: NavItem[] = [
   { label: "Lịch đăng ký", href: "/schedule", icon: CalendarDays, roles: ["INTERN", "TEAM_LEADER"] },
   { label: "Nhật ký thực tập", href: "/journal", icon: BookOpenText, roles: ["INTERN", "TEAM_LEADER"] },
   { label: "Quản lý ca của tôi", href: "/team", icon: UsersRound, roles: ["TEAM_LEADER"] },
-  { label: "Tổng quan quản trị", href: "/dashboard", icon: ShieldCheck, roles: ["ADMIN", "MANAGER"] },
-  { label: "Người dùng & nhóm", href: "/admin", icon: UsersRound, roles: ["ADMIN", "MANAGER"] },
-  { label: "Kiểm tra điểm danh", href: "/attendance", icon: FileCheck2, roles: ["ADMIN", "MANAGER"] },
-  { label: "Nhật ký sinh viên", href: "/journal", icon: BookOpenText, roles: ["ADMIN", "MANAGER"] },
-  { label: "Ca & sức chứa", href: "/schedule", icon: Database, roles: ["ADMIN", "MANAGER"] },
-  { label: "Chính sách thực tập", href: "/team", icon: SlidersHorizontal, roles: ["ADMIN", "MANAGER"] },
-  { label: "Báo cáo", href: "/reports", icon: BarChart3, roles: ["ADMIN", "MANAGER"] },
+  { label: "Tổng quan quản trị", href: "/dashboard", icon: ShieldCheck, roles: ["ADMIN"] },
+  { label: "Người dùng & nhóm", href: "/admin", icon: UsersRound, roles: ["ADMIN"], exact: true },
+  { label: "Kiểm tra điểm danh", href: "/attendance", icon: FileCheck2, roles: ["ADMIN"] },
+  { label: "Nhật ký sinh viên", href: "/journal", icon: BookOpenText, roles: ["ADMIN"] },
+  { label: "Ca & sức chứa", href: "/admin/shifts", icon: Database, roles: ["ADMIN"] },
+  { label: "Chính sách thực tập", href: "/team", icon: SlidersHorizontal, roles: ["ADMIN"] },
+  { label: "Báo cáo", href: "/reports", icon: BarChart3, roles: ["ADMIN"] },
 ];
 
 export function Sidebar({ open, onClose }: SidebarProps) {
   const user = useAuthStore((state) => state.user);
   const visibleItems = navItems.filter((item) => !item.roles || (user && item.roles.includes(user.role)));
-  const isAdmin = user?.role === "ADMIN" || user?.role === "MANAGER";
+  const isAdmin = user?.role === "ADMIN";
   const isLeader = user?.role === "TEAM_LEADER";
   const workspaceLabel = isAdmin ? "Khu quản trị" : isLeader ? "Khu nhóm trưởng" : "Khu sinh viên";
   const policyText = isAdmin
@@ -88,6 +89,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             <NavLink
               key={item.href}
               to={item.href}
+              end={item.exact}
               onClick={onClose}
               className={({ isActive }) =>
                 cn(

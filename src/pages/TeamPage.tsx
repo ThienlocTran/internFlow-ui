@@ -13,13 +13,13 @@ import { getLeaderShiftPeers } from "@/services/team.service";
 import { getStudentDetail } from "@/services/cohort.service";
 import { getReportProgress } from "@/services/report-journal.service";
 import { useAuthStore } from "@/store/auth-store";
+import { fallbackToFullImage, getFullImageUrl, getImageDisplayUrl } from "@/utils/cloudinary-image";
 import { formatDate } from "@/utils/date-format";
 import type { AttendanceAudit } from "@/types/api";
 
 const roleLabels: Record<string, string> = {
   INTERN: "Sinh viên thường",
   TEAM_LEADER: "Nhóm trưởng",
-  MANAGER: "Quản lý",
   ADMIN: "Admin",
 };
 
@@ -30,12 +30,18 @@ function today() {
 
 function attendanceImages(attendance: AttendanceAudit) {
   const legacy = [
-    attendance.checkinTimemarkImageUrl,
-    attendance.checkinGroupImageUrl,
-    attendance.checkoutTimemarkImageUrl,
-    attendance.checkoutGroupImageUrl,
-  ].filter((url): url is string => Boolean(url));
-  return [...legacy, ...attendance.images.map((image) => image.imageUrl)];
+    { id: "checkin-personal", label: "TimeMark vào ca", imageUrl: attendance.checkinTimemarkImageUrl },
+    { id: "checkin-group", label: "Ảnh nhóm vào ca", imageUrl: attendance.checkinGroupImageUrl },
+    { id: "checkout-personal", label: "TimeMark tan ca", imageUrl: attendance.checkoutTimemarkImageUrl },
+    { id: "checkout-group", label: "Ảnh nhóm tan ca", imageUrl: attendance.checkoutGroupImageUrl },
+  ].filter((image): image is { id: string; label: string; imageUrl: string } => Boolean(image.imageUrl));
+  const extra = attendance.images.map((image) => ({
+    id: image.id,
+    label: `${image.imageType} · ${image.phase} · ${image.expectedTime}`,
+    imageUrl: image.imageUrl,
+    thumbnailUrl: image.thumbnailUrl,
+  }));
+  return [...legacy, ...extra];
 }
 
 export function TeamPage() {
@@ -73,8 +79,8 @@ export function TeamPage() {
 
   const standardPolicy = policies.find((policy) => policy.role === "INTERN");
   const leaderPolicy = policies.find((policy) => policy.role === "TEAM_LEADER");
-  const managementPolicies = policies.filter((policy) => policy.role === "ADMIN" || policy.role === "MANAGER");
-  const isAdmin = user?.role === "ADMIN" || user?.role === "MANAGER";
+  const managementPolicies = policies.filter((policy) => policy.role === "ADMIN");
+  const isAdmin = user?.role === "ADMIN";
   const peers = peersQuery.data ?? [];
 
   return (
@@ -268,11 +274,22 @@ export function TeamPage() {
                         )}
                         {attendanceImages(attendance).length > 0 && (
                           <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                            {attendanceImages(attendance).slice(0, 4).map((imageUrl) => (
-                              <a key={imageUrl} href={imageUrl} target="_blank" rel="noreferrer">
-                                <img src={imageUrl} alt="Ảnh điểm danh" className="aspect-video rounded-md border object-cover" />
-                              </a>
-                            ))}
+                            {attendanceImages(attendance).slice(0, 4).map((image) => {
+                              const fullUrl = getFullImageUrl(image);
+                              const displayUrl = getImageDisplayUrl(image);
+                              if (!fullUrl || !displayUrl) return null;
+                              return (
+                                <a key={image.id} href={fullUrl} target="_blank" rel="noreferrer">
+                                  <img
+                                    src={displayUrl}
+                                    alt={image.label}
+                                    loading="lazy"
+                                    onError={(event) => fallbackToFullImage(event, fullUrl)}
+                                    className="aspect-video rounded-md border object-cover"
+                                  />
+                                </a>
+                              );
+                            })}
                           </div>
                         )}
                       </div>

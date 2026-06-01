@@ -76,6 +76,7 @@ export function LoginPage() {
 
   const [loginError, setLoginError] = useState<string | null>(null);
   const [pendingUser, setPendingUser] = useState<User | null>(null);
+  const [pendingCredential, setPendingCredential] = useState<string | null>(null);
   const [profileEmail, setProfileEmail] = useState<string | null>(null);
   const [scriptReady, setScriptReady] = useState(false);
 
@@ -115,10 +116,12 @@ export function LoginPage() {
     setLoginError(null);
     try {
       const user = await loginWithGoogle(credential);
-      if (!isProfileComplete(user)) {
+      if (!hasCompleteProfile(user)) {
+        setPendingCredential(credential);
         requireProfileCompletion(user);
         return;
       }
+      setPendingCredential(null);
       setSession(user, credential);
       navigate(from, { replace: true });
     } catch (error) {
@@ -179,8 +182,8 @@ export function LoginPage() {
   const handleCreateProfile = async (values: ProfileFormValues) => {
     try {
       if (!pendingUser) throw new Error("Chưa có phiên Google để cập nhật hồ sơ.");
-      const user = await updateProfile(pendingUser.id, values);
-      setSession(user);
+      const user = await updateProfile(pendingUser.id, values, pendingCredential);
+      setSession(user, pendingCredential ?? undefined);
       navigate(from, { replace: true });
     } catch (error) {
       setLoginError(error instanceof Error ? error.message : "Không thể tạo hồ sơ");
@@ -288,6 +291,7 @@ export function LoginPage() {
                       variant="outline"
                       onClick={() => {
                         setProfileEmail(null);
+                        setPendingCredential(null);
                         setLoginError(null);
                       }}
                     >

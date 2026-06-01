@@ -17,7 +17,7 @@ import { useAuthStore } from "@/store/auth-store";
 import type { Attendance, AttendanceImagePhase, AttendanceImageType, Shift } from "@/types/api";
 import { getGroupPhotoSlots, getPersonalIntervalSlots } from "@/utils/attendance-photo-rules";
 import { formatDate } from "@/utils/date-format";
-import { withCloudinaryTransform } from "@/utils/cloudinary-image";
+import { fallbackToFullImage, getImageDisplayUrl } from "@/utils/cloudinary-image";
 
 // --- localStorage draft helpers ---
 const DRAFT_KEY = "internflow-attendance-drafts";
@@ -206,11 +206,27 @@ function savedSlotImage(
   )?.imageUrl;
 }
 
+function savedSlotThumbnail(
+  attendance: Attendance | undefined,
+  imageType: AttendanceImageType,
+  phase: AttendanceImagePhase,
+  expectedTime: string,
+) {
+  const normalizedExpectedTime = expectedTime.slice(0, 5);
+  return attendance?.images.find(
+    (image) =>
+      image.imageType === imageType &&
+      image.phase === phase &&
+      image.expectedTime.slice(0, 5) === normalizedExpectedTime,
+  )?.thumbnailUrl;
+}
+
 function ImagePicker({
   label,
   hint,
   file,
   imageUrl,
+  thumbnailUrl,
   cachedUrl,
   onChange,
 }: {
@@ -218,6 +234,7 @@ function ImagePicker({
   hint?: string;
   file?: File;
   imageUrl?: string;
+  thumbnailUrl?: string;
   cachedUrl?: string;
   onChange: (file: File | undefined) => void;
 }) {
@@ -235,13 +252,20 @@ function ImagePicker({
     };
   }, [file]);
 
-  const previewUrl = filePreviewUrl ?? withCloudinaryTransform(imageUrl ?? cachedUrl, "c_limit,w_900,q_auto,f_auto");
+  const fullUrl = imageUrl ?? cachedUrl;
+  const previewUrl = filePreviewUrl ?? getImageDisplayUrl({ imageUrl: fullUrl, thumbnailUrl });
 
   return (
     <label className="block overflow-hidden rounded-lg border border-dashed bg-slate-50 transition-colors hover:bg-slate-100">
       {previewUrl && (
         <div className="relative border-b bg-white">
-          <img src={previewUrl} alt={label} className="aspect-video w-full object-cover" />
+          <img
+            src={previewUrl}
+            alt={label}
+            loading="lazy"
+            onError={(event) => fullUrl && fallbackToFullImage(event, fullUrl)}
+            className="aspect-video w-full object-cover"
+          />
           <div className="absolute right-3 top-3 rounded-full bg-slate-950/85 px-3 py-1 text-xs font-medium text-white">
             {file ? "Ảnh vừa chọn" : imageUrl ? "Đã lưu" : "Đã tải lên (chưa lưu)"}
           </div>
@@ -415,6 +439,7 @@ function InternAttendancePage() {
   const [files, setFiles] = useState<Record<SlotKey, File | undefined>>({});
   const [message, setMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [recentCheckoutAttendanceId, setRecentCheckoutAttendanceId] = useState<string | null>(null);
   const [allDraftUrls, setAllDraftUrls] = useState<Record<string, string>>(readDrafts);
   const [allPreviewDraftUrls, setAllPreviewDraftUrls] = useState<Record<string, string>>({});
   const [allPreviewDraftFiles, setAllPreviewDraftFiles] = useState<Record<string, File>>({});
@@ -471,6 +496,9 @@ function InternAttendancePage() {
     (optimisticAttendance.shift.id === selectedShift.id || optimisticAttendance.shift.code === selectedShift.code)
       ? optimisticAttendance
       : undefined);
+  const justCheckedOut =
+    currentAttendance?.status === "CHECKED_OUT" &&
+    currentAttendance.id === recentCheckoutAttendanceId;
   const personalSlots = selectedShift ? getPersonalIntervalSlots(selectedShift) : [];
   const groupSlots = selectedShift ? getGroupPhotoSlots(selectedShift) : [];
 
@@ -479,6 +507,10 @@ function InternAttendancePage() {
       setOptimisticAttendance(null);
     }
   }, [queriedAttendance?.id, queriedAttendance?.status]);
+
+  useEffect(() => {
+    setRecentCheckoutAttendanceId(null);
+  }, [attendanceDate, selectedShiftId]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -522,6 +554,7 @@ function InternAttendancePage() {
     onSuccess: (createdAttendance) => {
       setMessage("Checkin thành công.");
       setErrorMessage(null);
+      setRecentCheckoutAttendanceId(null);
       setOptimisticAttendance(createdAttendance);
       queryClient.setQueryData<Attendance[]>(["attendances", user?.id, attendanceDate], (current) => {
         const existing = current ?? [];
@@ -621,6 +654,7 @@ function InternAttendancePage() {
     onSuccess: (updatedAttendance) => {
       setMessage("Checkout thành công.");
       setErrorMessage(null);
+      setRecentCheckoutAttendanceId(updatedAttendance.id);
       setOptimisticAttendance(updatedAttendance);
       queryClient.invalidateQueries({ queryKey: ["attendances", user?.id, attendanceDate] });
       // Xóa draft sau khi checkout thành công
@@ -651,41 +685,6 @@ function InternAttendancePage() {
     },
   });
 
-  const uploadSlotMutation = useMutation({
-    mutationFn: async ({
-      key,
-      imageType,
-      phase,
-      expectedTime,
-      displayOrder,
-    }: {
-      key: SlotKey;
-      imageType: AttendanceImageType;
-      phase: AttendanceImagePhase;
-      expectedTime: string;
-      displayOrder: number;
-    }) => {
-      if (!currentAttendance) throw new Error("Bạn cần checkin trước khi nộp ảnh giữa giờ.");
-      const file = files[key];
-      if (!file) throw new Error("Chưa chọn ảnh.");
-      const uploaded = await uploadImage(file);
-      return addAttendanceImage(currentAttendance.id, {
-        imageType,
-        phase,
-        expectedTime,
-        imageUrl: uploaded.url,
-        displayOrder,
-      });
-    },
-    onSuccess: () => {
-      setMessage("Đã lưu ảnh theo mốc thời gian.");
-      setErrorMessage(null);
-      queryClient.invalidateQueries({ queryKey: ["attendances", user?.id, attendanceDate] });
-    },
-    onError: (error) => {
-      setErrorMessage(error instanceof Error ? error.message : "Không thể upload ảnh.");
-    },
-  });
 
   const saveCheckoutDraftMutation = useMutation({
     mutationFn: async ({ slotKey, file }: { slotKey: "checkout-personal" | "checkout-group"; file: File }) => {
@@ -767,14 +766,21 @@ function InternAttendancePage() {
     setAllPreviewDraftUrls((prev) => ({ ...prev, [previewKey]: URL.createObjectURL(file) }));
     void (async () => {
       try {
-        const { url } = await uploadImage(file);
-        persistDraftUrl(slotKey, url);
+        const uploaded = await uploadImage(file);
+        persistDraftUrl(slotKey, uploaded.url);
         if (currentAttendance) {
           const savedImage = await addAttendanceImage(currentAttendance.id, {
             imageType,
             phase,
             expectedTime,
-            imageUrl: url,
+            imageUrl: uploaded.url,
+            storageProvider: "CLOUDINARY",
+            publicId: uploaded.publicId,
+            thumbnailUrl: uploaded.thumbnailUrl,
+            fileSizeBytes: uploaded.fileSizeBytes,
+            mimeType: uploaded.mimeType,
+            width: uploaded.width,
+            height: uploaded.height,
             displayOrder,
           });
           queryClient.setQueryData<Attendance[]>(["attendances", user?.id, attendanceDate], (current) =>
@@ -806,29 +812,8 @@ function InternAttendancePage() {
     })();
   };
 
-  const hasEnoughPersonalImagesForCheckout =
-    Boolean(currentAttendance?.checkinTimemarkImageUrl) &&
-    personalSlots.every((slot) => {
-      const key = fileKey("PERSONAL_TIMEMARK", "DURING_SHIFT", slot.time);
-      return Boolean(
-        savedSlotImage(currentAttendance, "PERSONAL_TIMEMARK", "DURING_SHIFT", slot.time) ||
-        files[key] ||
-        getDraft(key) ||
-        allPreviewDraftFiles[ck(key)]
-      );
-    }) &&
-    Boolean(
-      files["checkout-personal"] ||
-      currentAttendance?.checkoutTimemarkImageUrl ||
-      getDraft("checkout-personal") ||
-      allPreviewDraftFiles[ck("checkout-personal")],
-    );
 
-  const isBusy =
-    saveMutation.isPending ||
-    checkoutMutation.isPending ||
-    uploadSlotMutation.isPending ||
-    saveCheckoutDraftMutation.isPending;
+  const isBusy = saveMutation.isPending || checkoutMutation.isPending;
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -983,6 +968,7 @@ function InternAttendancePage() {
                         label={`Mốc ${slot.time}`}
                         file={files[key]}
                         imageUrl={savedSlotImage(currentAttendance, "PERSONAL_TIMEMARK", "DURING_SHIFT", slot.time)}
+                        thumbnailUrl={savedSlotThumbnail(currentAttendance, "PERSONAL_TIMEMARK", "DURING_SHIFT", slot.time)}
                         cachedUrl={getDraft(key) ?? getPreviewDraft(key)}
                         onChange={(file) =>
                           handlePersistedSlotChange(
@@ -995,23 +981,6 @@ function InternAttendancePage() {
                           )
                         }
                       />
-                      <Button
-                        className="mt-3"
-                        size="sm"
-                        variant="outline"
-                        disabled={!currentAttendance || uploadSlotMutation.isPending}
-                        onClick={() =>
-                          uploadSlotMutation.mutate({
-                            key,
-                            imageType: "PERSONAL_TIMEMARK",
-                            phase: "DURING_SHIFT",
-                            expectedTime: slot.time,
-                            displayOrder: index,
-                          })
-                        }
-                      >
-                        Lưu ảnh mốc này
-                      </Button>
                     </div>
                   );
                 })}
@@ -1034,26 +1003,10 @@ function InternAttendancePage() {
                         hint={phase === "CHECKIN" ? "Người đại diện giơ 2 ngón tay chào." : phase === "CHECKOUT" ? "Người đại diện giơ tay tạm biệt." : undefined}
                         file={files[key]}
                         imageUrl={savedSlotImage(currentAttendance, "GROUP", phase, slot.time)}
+                        thumbnailUrl={savedSlotThumbnail(currentAttendance, "GROUP", phase, slot.time)}
                         cachedUrl={getDraft(key) ?? getPreviewDraft(key)}
                         onChange={(file) => handlePersistedSlotChange(key, file, "GROUP", phase, slot.time, index)}
                       />
-                      <Button
-                        className="mt-3"
-                        size="sm"
-                        variant="outline"
-                        disabled={!currentAttendance || uploadSlotMutation.isPending}
-                        onClick={() =>
-                          uploadSlotMutation.mutate({
-                            key,
-                            imageType: "GROUP",
-                            phase,
-                            expectedTime: slot.time,
-                            displayOrder: index,
-                          })
-                        }
-                      >
-                        Lưu ảnh nhóm
-                      </Button>
                     </div>
                   );
                 })}
@@ -1092,7 +1045,7 @@ function InternAttendancePage() {
             <div className="space-y-2">
               <Button 
                 onClick={() => checkoutMutation.mutate()} 
-                disabled={!currentAttendance || currentAttendance.status === "CHECKED_OUT" || !hasEnoughPersonalImagesForCheckout || isBusy}
+                disabled={!currentAttendance || currentAttendance.status === "CHECKED_OUT" || isBusy}
                 className="w-full md:w-auto"
               >
                 {checkoutMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
@@ -1103,14 +1056,14 @@ function InternAttendancePage() {
                   Bạn cần checkin trước khi có thể checkout
                 </p>
               )}
-              {currentAttendance?.status === "CHECKED_OUT" && (
+              {justCheckedOut && (
                 <p className="text-sm text-emerald-600">
-                  Bạn đã checkout ca này rồi
+                  Bạn đã checkout thành công
                 </p>
               )}
-              {currentAttendance && currentAttendance.status !== "CHECKED_OUT" && !hasEnoughPersonalImagesForCheckout && (
-                <p className="text-sm text-amber-600">
-                  Cần đủ ảnh TimeMark giữa ca và ảnh TimeMark tan ca trước khi checkout
+              {currentAttendance?.status === "CHECKED_OUT" && !justCheckedOut && (
+                <p className="text-sm text-emerald-600">
+                  Bạn đã checkout ca này rồi
                 </p>
               )}
             </div>
@@ -1123,6 +1076,6 @@ function InternAttendancePage() {
 
 export function AttendancePage() {
   const user = useAuthStore((state) => state.user);
-  const isAdmin = user?.role === "ADMIN" || user?.role === "MANAGER";
+  const isAdmin = user?.role === "ADMIN";
   return isAdmin ? <AdminAttendanceReviewPage /> : <InternAttendancePage />;
 }
