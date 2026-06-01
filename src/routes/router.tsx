@@ -10,6 +10,7 @@ import { TeamPage } from "@/pages/TeamPage";
 import { AdminPage } from "@/pages/AdminPage";
 import { AdminShiftPage } from "@/pages/AdminShiftPage";
 import { AdminStudentDetailPage } from "@/pages/AdminStudentDetailPage";
+import { AdminStudentWorkDayDetailPage } from "@/pages/AdminStudentWorkDayDetailPage";
 import { ReportsPage } from "@/pages/ReportsPage";
 import { JournalPage } from "@/pages/JournalPage";
 import { JournalReviewPage } from "@/pages/JournalReviewPage";
@@ -40,7 +41,7 @@ export const router = createBrowserRouter([
             children: [
               { path: "/admin", element: <AdminPage /> },
               { path: "/admin/students/:studentId", element: <AdminStudentDetailPage /> },
-              { path: "/admin/students/:studentId/days/:workDate", element: <AdminStudentDetailPage /> },
+              { path: "/admin/students/:studentId/days/:workDate", element: <AdminStudentWorkDayDetailPage /> },
               { path: "/reports", element: <ReportsPage /> },
             ],
           },
