@@ -37,7 +37,7 @@ const navItems: NavItem[] = [
   { label: "Nhật ký thực tập", href: "/journal", icon: BookOpenText, roles: ["INTERN", "TEAM_LEADER"] },
   { label: "Quản lý ca của tôi", href: "/team", icon: UsersRound, roles: ["TEAM_LEADER"] },
   { label: "Tổng quan quản trị", href: "/dashboard", icon: ShieldCheck, roles: ["ADMIN"] },
-  { label: "Người dùng & nhóm", href: "/admin", icon: UsersRound, roles: ["ADMIN"], exact: true },
+  { label: "Người dùng & nhóm", href: "/admin", icon: UsersRound, roles: ["ADMIN"] },
   { label: "Kiểm tra điểm danh", href: "/attendance", icon: FileCheck2, roles: ["ADMIN"] },
   { label: "Nhật ký sinh viên", href: "/journal", icon: BookOpenText, roles: ["ADMIN"] },
   { label: "Ca & sức chứa", href: "/admin/shifts", icon: Database, roles: ["ADMIN"] },

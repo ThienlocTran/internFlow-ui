@@ -1,5 +1,9 @@
 import { useMemo, useState } from "react";
+<<<<<<< HEAD
 import { Edit3, Loader2, Plus, Power, RefreshCw, Save, Search, Trash2, X } from "lucide-react";
+=======
+import { Edit3, Loader2, Plus, Power, RefreshCw, Save, Search, X } from "lucide-react";
+>>>>>>> ecaf1ef3d6d389299cfb3b84d0187e312fe65ff7
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -103,7 +107,10 @@ function validate(form: ShiftForm) {
 export function AdminShiftPage() {
   const queryClient = useQueryClient();
   const [query, setQuery] = useState("");
+<<<<<<< HEAD
   const [isFormOpen, setIsFormOpen] = useState(false);
+=======
+>>>>>>> ecaf1ef3d6d389299cfb3b84d0187e312fe65ff7
   const [editingShiftId, setEditingShiftId] = useState<string | null>(null);
   const [form, setForm] = useState<ShiftForm>(emptyForm);
   const [message, setMessage] = useState<string | null>(null);
@@ -115,6 +122,7 @@ export function AdminShiftPage() {
     setEditingShiftId(null);
     setForm(emptyForm);
     setFormError(null);
+<<<<<<< HEAD
     setIsFormOpen(false);
   };
 
@@ -124,6 +132,8 @@ export function AdminShiftPage() {
     setFormError(null);
     setMessage(null);
     setIsFormOpen(true);
+=======
+>>>>>>> ecaf1ef3d6d389299cfb3b84d0187e312fe65ff7
   };
 
   const saveMutation = useMutation({
@@ -145,9 +155,15 @@ export function AdminShiftPage() {
   });
 
   const activeMutation = useMutation({
+<<<<<<< HEAD
     mutationFn: ({ shiftId, active }: { shiftId: string; active: boolean; successMessage?: string }) => updateShiftActive(shiftId, active),
     onSuccess: (_data, variables) => {
       setMessage(variables.successMessage || "Đã cập nhật trạng thái ca.");
+=======
+    mutationFn: ({ shiftId, active }: { shiftId: string; active: boolean }) => updateShiftActive(shiftId, active),
+    onSuccess: () => {
+      setMessage("Đã cập nhật trạng thái ca.");
+>>>>>>> ecaf1ef3d6d389299cfb3b84d0187e312fe65ff7
       queryClient.invalidateQueries({ queryKey: ["admin-shifts"] });
       queryClient.invalidateQueries({ queryKey: ["shifts"] });
     },
@@ -171,6 +187,7 @@ export function AdminShiftPage() {
     setForm(toForm(shift));
     setFormError(null);
     setMessage(null);
+<<<<<<< HEAD
     setIsFormOpen(true);
   };
 
@@ -192,6 +209,8 @@ export function AdminShiftPage() {
       active: false,
       successMessage: "Ca đã có thể có dữ liệu liên quan, chỉ tắt ca thay vì xóa.",
     });
+=======
+>>>>>>> ecaf1ef3d6d389299cfb3b84d0187e312fe65ff7
   };
 
   return (
@@ -201,6 +220,7 @@ export function AdminShiftPage() {
           <h1 className="text-3xl font-semibold tracking-normal">Quản lý ca</h1>
           <p className="mt-2 text-sm text-muted-foreground">Tạo, sửa và bật/tắt ca thực tập dùng cho lịch đăng ký.</p>
         </div>
+<<<<<<< HEAD
         <div className="flex gap-2">
           <Button onClick={openCreateForm}>
             <Plus className="h-4 w-4" />
@@ -211,10 +231,17 @@ export function AdminShiftPage() {
           Tải lại
           </Button>
         </div>
+=======
+        <Button variant="outline" onClick={() => shiftsQuery.refetch()} disabled={shiftsQuery.isFetching}>
+          <RefreshCw className="h-4 w-4" />
+          Tải lại
+        </Button>
+>>>>>>> ecaf1ef3d6d389299cfb3b84d0187e312fe65ff7
       </div>
 
       {message && <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{message}</div>}
 
+<<<<<<< HEAD
       {isFormOpen && <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4">
         <Card className="mt-8 w-full max-w-2xl bg-white shadow-xl">
           <CardHeader className="flex flex-row items-start justify-between gap-3">
@@ -225,6 +252,13 @@ export function AdminShiftPage() {
             <Button size="icon" variant="ghost" onClick={resetForm} disabled={saveMutation.isPending} aria-label="Đóng form">
               <X className="h-4 w-4" />
             </Button>
+=======
+      <div className="grid gap-6 xl:grid-cols-[420px_1fr]">
+        <Card className="bg-white/90">
+          <CardHeader>
+            <CardTitle>{editingShiftId ? "Sửa ca" : "Tạo ca"}</CardTitle>
+            <CardDescription>Điền thông tin ca, slot, nhóm hiển thị và trạng thái hoạt động.</CardDescription>
+>>>>>>> ecaf1ef3d6d389299cfb3b84d0187e312fe65ff7
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2">
@@ -304,9 +338,12 @@ export function AdminShiftPage() {
             </div>
           </CardContent>
         </Card>
+<<<<<<< HEAD
       </div>}
 
       <div className="grid gap-6">
+=======
+>>>>>>> ecaf1ef3d6d389299cfb3b84d0187e312fe65ff7
 
         <Card className="bg-white/90">
           <CardHeader>
@@ -377,15 +414,22 @@ export function AdminShiftPage() {
                               size="sm"
                               variant="outline"
                               disabled={activeMutation.isPending}
+<<<<<<< HEAD
                               onClick={() => toggleShift(shift)}
+=======
+                              onClick={() => activeMutation.mutate({ shiftId: shift.id, active: !shift.active })}
+>>>>>>> ecaf1ef3d6d389299cfb3b84d0187e312fe65ff7
                             >
                               <Power className="h-4 w-4" />
                               {shift.active ? "Tắt" : "Mở"}
                             </Button>
+<<<<<<< HEAD
                             <Button size="sm" variant="outline" disabled={activeMutation.isPending} onClick={() => deleteShift(shift)}>
                               <Trash2 className="h-4 w-4" />
                               Xóa
                             </Button>
+=======
+>>>>>>> ecaf1ef3d6d389299cfb3b84d0187e312fe65ff7
                           </div>
                         </td>
                       </tr>
