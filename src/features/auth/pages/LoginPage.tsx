@@ -116,7 +116,7 @@ export function LoginPage() {
     setLoginError(null);
     try {
       const user = await loginWithGoogle(credential);
-      if (!hasCompleteProfile(user)) {
+      if (!isProfileComplete(user)) {
         setPendingCredential(credential);
         requireProfileCompletion(user);
         return;
