@@ -12,10 +12,10 @@ export function getUserById(id: string) {
 export function createProfile(payload: {
   email: string;
   fullName: string;
-  studentCode?: string;
-  studentClass?: string;
-  school?: string;
-  phone?: string;
+  studentCode: string;
+  studentClass: string;
+  school: string;
+  phone: string;
 }) {
   return apiRequest<User>("/users/profile", {
     method: "POST",
@@ -28,10 +28,10 @@ export function updateProfile(
   payload: {
     email: string;
     fullName: string;
-    studentCode?: string;
-    studentClass?: string;
-    school?: string;
-    phone?: string;
+    studentCode: string;
+    studentClass: string;
+    school: string;
+    phone: string;
   },
   token?: string | null,
 ) {

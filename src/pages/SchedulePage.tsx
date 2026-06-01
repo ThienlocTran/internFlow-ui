@@ -363,7 +363,7 @@ function InternSchedulePage() {
 
   const toggleShift = (shift: Shift) => {
     if (selectedDateIsPast) {
-      setNotice({ type: "warning", text: "NgÃ y nÃ y Ä‘Ã£ qua nÃªn khÃ´ng thá»ƒ Ä‘Äƒng kÃ½ thÃªm ca." });
+      setNotice({ type: "warning", text: "Ngày này đã qua nên không thể đăng ký thêm ca." });
       return;
     }
     const capacity = capacityFor(capacityQuery.data, selectedDate, shift.id);
@@ -557,12 +557,12 @@ function InternSchedulePage() {
           )}
           {selectedDateIsPast && (
             <p className="rounded-md bg-amber-50 p-3 text-sm text-amber-800">
-              NgÃ y Ä‘Ã£ qua sáº½ khÃ´ng cho Ä‘Äƒng kÃ½ má»›i hoáº·c rá»i ca Ä‘á»ƒ trÃ¡nh sá»­a lá»‹ch sau khi Ä‘Ã£ Ä‘i thá»±c táº­p.
+              Ngày đã qua sẽ không cho đăng ký mới hoặc rời ca để tránh sửa lịch sau khi đã đi thực tập.
             </p>
           )}
           {!policy && (
             <p className="rounded-md bg-red-50 p-3 text-sm text-red-700">
-              Vai trÃ² cá»§a báº¡n chÆ°a Ä‘Æ°á»£c cáº¥u hÃ¬nh chÃ­nh sÃ¡ch ca nÃªn chÆ°a thá»ƒ Ä‘Äƒng kÃ½.
+              Vai trò của bạn chưa được cấu hình chính sách ca nên chưa thể đăng ký.
             </p>
           )}
           {notice && <p className={`rounded-md p-3 text-sm ${noticeClass}`}>{notice.text}</p>}
