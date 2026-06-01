@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Edit3, Loader2, Plus, Power, RefreshCw, Save, Search, X } from "lucide-react";
+import { Edit3, Loader2, Plus, Power, RefreshCw, Save, Search, Trash2, X } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -145,9 +145,9 @@ export function AdminShiftPage() {
   });
 
   const activeMutation = useMutation({
-    mutationFn: ({ shiftId, active }: { shiftId: string; active: boolean }) => updateShiftActive(shiftId, active),
-    onSuccess: () => {
-      setMessage("Đã cập nhật trạng thái ca.");
+    mutationFn: ({ shiftId, active }: { shiftId: string; active: boolean; successMessage?: string }) => updateShiftActive(shiftId, active),
+    onSuccess: (_data, variables) => {
+      setMessage(variables.successMessage || "Đã cập nhật trạng thái ca.");
       queryClient.invalidateQueries({ queryKey: ["admin-shifts"] });
       queryClient.invalidateQueries({ queryKey: ["shifts"] });
     },
@@ -174,6 +174,26 @@ export function AdminShiftPage() {
     setIsFormOpen(true);
   };
 
+  const toggleShift = (shift: Shift) => {
+    const nextActive = !shift.active;
+    const action = nextActive ? "mở lại" : "tắt";
+    if (!window.confirm(`Bạn chắc chắn muốn ${action} ca ${shift.name}?`)) return;
+    activeMutation.mutate({ shiftId: shift.id, active: nextActive, successMessage: `Đã ${action} ca.` });
+  };
+
+  const deleteShift = (shift: Shift) => {
+    if (!shift.active) {
+      setMessage("Ca đã được tắt trước đó. Backend hiện chưa hỗ trợ xóa cứng an toàn.");
+      return;
+    }
+    if (!window.confirm(`Backend chưa hỗ trợ xóa cứng an toàn. Bạn muốn tắt ca ${shift.name} thay vì xóa?`)) return;
+    activeMutation.mutate({
+      shiftId: shift.id,
+      active: false,
+      successMessage: "Ca đã có thể có dữ liệu liên quan, chỉ tắt ca thay vì xóa.",
+    });
+  };
+
   return (
     <div className="mx-auto max-w-7xl space-y-6">
       <div className="flex flex-col justify-between gap-3 md:flex-row md:items-end">
@@ -195,8 +215,8 @@ export function AdminShiftPage() {
 
       {message && <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{message}</div>}
 
-      <div className={isFormOpen ? "grid gap-6 xl:grid-cols-[420px_1fr]" : "grid gap-6"}>
-        {isFormOpen && <Card className="bg-white/90">
+      {isFormOpen && <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4">
+        <Card className="mt-8 w-full max-w-2xl bg-white shadow-xl">
           <CardHeader className="flex flex-row items-start justify-between gap-3">
             <div className="space-y-1.5">
             <CardTitle>{editingShiftId ? "Sửa ca" : "Tạo ca"}</CardTitle>
@@ -283,7 +303,10 @@ export function AdminShiftPage() {
               )}
             </div>
           </CardContent>
-        </Card>}
+        </Card>
+      </div>}
+
+      <div className="grid gap-6">
 
         <Card className="bg-white/90">
           <CardHeader>
@@ -354,10 +377,14 @@ export function AdminShiftPage() {
                               size="sm"
                               variant="outline"
                               disabled={activeMutation.isPending}
-                              onClick={() => activeMutation.mutate({ shiftId: shift.id, active: !shift.active })}
+                              onClick={() => toggleShift(shift)}
                             >
                               <Power className="h-4 w-4" />
                               {shift.active ? "Tắt" : "Mở"}
+                            </Button>
+                            <Button size="sm" variant="outline" disabled={activeMutation.isPending} onClick={() => deleteShift(shift)}>
+                              <Trash2 className="h-4 w-4" />
+                              Xóa
                             </Button>
                           </div>
                         </td>
