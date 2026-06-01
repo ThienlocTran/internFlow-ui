@@ -27,6 +27,7 @@ type NavItem = {
   href: string;
   icon: typeof LayoutDashboard;
   roles?: UserRole[];
+  exact?: boolean;
 };
 
 const navItems: NavItem[] = [
@@ -88,6 +89,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             <NavLink
               key={item.href}
               to={item.href}
+              end={item.exact}
               onClick={onClose}
               className={({ isActive }) =>
                 cn(
