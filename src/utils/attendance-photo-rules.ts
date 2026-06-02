@@ -37,27 +37,16 @@ export function getPersonalIntervalSlots(shift: Shift): PhotoSlot[] {
 export function getGroupPhotoSlots(shift: Shift): PhotoSlot[] {
   const start = toMinutes(shift.startTime);
   const end = toMinutes(shift.endTime);
-  const slots: PhotoSlot[] = [
-    {
-      label: "Ảnh nhóm vào ca",
-      time: toTime(start),
-      description: "Một bạn đại diện giơ 2 ngón tay chào, các bạn còn lại không cần làm động tác.",
-    },
-  ];
+  const slots: PhotoSlot[] = [];
+  let cursor = Math.floor(start / 60) * 60 + 60;
 
-  for (let cursor = start + 60; cursor < end; cursor += 60) {
+  for (; cursor < end; cursor += 60) {
     slots.push({
       label: "Ảnh nhóm giữa ca",
       time: toTime(cursor),
-      description: "Cứ đúng 1 tiếng tính từ lúc vào làm sẽ có 1 ảnh nhóm.",
+      description: "Ảnh nhóm chỉ chụp ở các mốc giờ tròn giữa ca.",
     });
   }
-
-  slots.push({
-    label: "Ảnh nhóm tan ca",
-    time: toTime(end),
-    description: "Một bạn đại diện giơ tay cao làm động tác tạm biệt, các bạn còn lại không cần làm.",
-  });
 
   return slots;
 }

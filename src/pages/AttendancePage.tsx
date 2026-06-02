@@ -533,22 +533,11 @@ function InternAttendancePage() {
         previewCheckinPersonalFile,
       );
 
-      const checkinGroupKey = `${user.id}|${attendanceDate}|${selectedShift.id}|checkin-group`;
-      const groupFile = files["checkin-group"];
-      const draftCheckinGroupUrl = allDraftUrls[checkinGroupKey];
-      const previewCheckinGroupFile = allPreviewDraftFiles[checkinGroupKey];
-      const groupImageUrl = await resolvePersistedImageUrl(
-        groupFile,
-        draftCheckinGroupUrl,
-        previewCheckinGroupFile,
-      );
-
       return checkin({
         userId: user.id,
         shiftId: selectedShift.id,
         attendanceDate,
         timemarkImageUrl: timemarkImageUrl!,
-        groupImageUrl,
       });
     },
     onSuccess: (createdAttendance) => {
@@ -569,7 +558,6 @@ function InternAttendancePage() {
       });
       const keysToRemove = [
         `${user?.id ?? ""}|${attendanceDate}|${selectedShift?.id ?? ""}|checkin-personal`,
-        `${user?.id ?? ""}|${attendanceDate}|${selectedShift?.id ?? ""}|checkin-group`,
       ];
       removeDrafts(keysToRemove);
       void removePreviewDrafts(keysToRemove);
@@ -591,7 +579,6 @@ function InternAttendancePage() {
       setFiles((prev) => ({
         ...prev,
         ["checkin-personal"]: undefined,
-        ["checkin-group"]: undefined,
       }));
       void queryClient.invalidateQueries({ queryKey: ["attendances", user?.id, attendanceDate] });
     },
@@ -635,20 +622,8 @@ function InternAttendancePage() {
         previewTimemarkFile,
       );
 
-      const groupFile = files["checkout-group"];
-      const savedGroupUrl = currentAttendance.checkoutGroupImageUrl;
-      const draftGroupKey = `${user?.id ?? ""}|${attendanceDate}|${selectedShift?.id ?? ""}|checkout-group`;
-      const draftGroupUrl = allDraftUrls[draftGroupKey];
-      const previewGroupFile = allPreviewDraftFiles[draftGroupKey];
-      const groupUrl = await resolvePersistedImageUrl(
-        groupFile,
-        savedGroupUrl ?? draftGroupUrl,
-        previewGroupFile,
-      );
-
       return checkout(currentAttendance.id, {
         timemarkImageUrl: timemarkUrl!,
-        groupImageUrl: groupUrl,
       });
     },
     onSuccess: (updatedAttendance) => {
@@ -660,7 +635,6 @@ function InternAttendancePage() {
       // Xóa draft sau khi checkout thành công
       const keysToRemove = [
         `${user?.id ?? ""}|${attendanceDate}|${selectedShift?.id ?? ""}|checkout-personal`,
-        `${user?.id ?? ""}|${attendanceDate}|${selectedShift?.id ?? ""}|checkout-group`,
       ];
       removeDrafts(keysToRemove);
       void removePreviewDrafts(keysToRemove);
@@ -854,7 +828,7 @@ function InternAttendancePage() {
               Ảnh nhóm
             </div>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Ảnh nhóm có mốc vào ca, mỗi 1 tiếng giữa ca và tan ca. Nếu đi một mình có thể bỏ qua ảnh nhóm.
+              Ảnh nhóm chỉ có ở các mốc giờ tròn giữa ca. Đầu ca và cuối ca chỉ bắt buộc ảnh TimeMark.
             </p>
           </div>
         </CardContent>
@@ -942,14 +916,6 @@ function InternAttendancePage() {
                 cachedUrl={getDraft("checkin-personal") ?? getPreviewDraft("checkin-personal")}
                 onChange={(file) => handleFileChange("checkin-personal", file)}
               />
-              <ImagePicker
-                label="Ảnh nhóm vào ca"
-                hint="Không bắt buộc nếu hôm đó chỉ có một mình."
-                file={files["checkin-group"]}
-                imageUrl={currentAttendance?.checkinGroupImageUrl}
-                cachedUrl={getDraft("checkin-group") ?? getPreviewDraft("checkin-group")}
-                onChange={(file) => handleFileChange("checkin-group", file)}
-              />
             </div>
 
             <Button onClick={() => saveMutation.mutate()} disabled={Boolean(currentAttendance) || isBusy}>
@@ -989,18 +955,13 @@ function InternAttendancePage() {
               <div className="space-y-3">
                 <h3 className="font-semibold">Ảnh nhóm theo mốc</h3>
                 {groupSlots.map((slot, index) => {
-                  const phase: AttendanceImagePhase =
-                    slot.time === selectedShift.startTime.slice(0, 5)
-                      ? "CHECKIN"
-                      : slot.time === selectedShift.endTime.slice(0, 5)
-                        ? "CHECKOUT"
-                        : "DURING_SHIFT";
+                  const phase: AttendanceImagePhase = "DURING_SHIFT";
                   const key = fileKey("GROUP", phase, slot.time);
                   return (
                     <div key={key} className="rounded-lg border p-3">
                       <ImagePicker
                         label={`${slot.label} - ${slot.time}`}
-                        hint={phase === "CHECKIN" ? "Người đại diện giơ 2 ngón tay chào." : phase === "CHECKOUT" ? "Người đại diện giơ tay tạm biệt." : undefined}
+                        hint="Ảnh nhóm chỉ có ở mốc giữa ca."
                         file={files[key]}
                         imageUrl={savedSlotImage(currentAttendance, "GROUP", phase, slot.time)}
                         thumbnailUrl={savedSlotThumbnail(currentAttendance, "GROUP", phase, slot.time)}
@@ -1024,19 +985,6 @@ function InternAttendancePage() {
                   handleFileChange("checkout-personal", file);
                   if (file && currentAttendance) {
                     saveCheckoutDraftMutation.mutate({ slotKey: "checkout-personal", file });
-                  }
-                }}
-              />
-              <ImagePicker
-                label="Ảnh nhóm tan ca"
-                hint="Không bắt buộc nếu hôm đó chỉ có một mình."
-                file={files["checkout-group"]}
-                imageUrl={currentAttendance?.checkoutGroupImageUrl}
-                cachedUrl={getDraft("checkout-group") ?? getPreviewDraft("checkout-group")}
-                onChange={(file) => {
-                  handleFileChange("checkout-group", file);
-                  if (file && currentAttendance) {
-                    saveCheckoutDraftMutation.mutate({ slotKey: "checkout-group", file });
                   }
                 }}
               />

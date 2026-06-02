@@ -9,9 +9,7 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { ErrorState } from "@/components/common/ErrorState";
 import { getRolePolicies } from "@/services/role-policy.service";
-import { getLeaderShiftPeers } from "@/services/team.service";
-import { getStudentDetail } from "@/services/cohort.service";
-import { getReportProgress } from "@/services/report-journal.service";
+import { getLeaderShiftPeers, getTeamMemberFullDetail } from "@/services/team.service";
 import { useAuthStore } from "@/store/auth-store";
 import { fallbackToFullImage, getFullImageUrl, getImageDisplayUrl } from "@/utils/cloudinary-image";
 import { formatDate } from "@/utils/date-format";
@@ -55,14 +53,9 @@ export function TeamPage() {
     enabled: user?.role === "TEAM_LEADER",
   });
   const detailQuery = useQuery({
-    queryKey: ["student-detail", selectedStudentId],
-    queryFn: () => getStudentDetail(selectedStudentId!),
-    enabled: Boolean(selectedStudentId),
-  });
-  const reportQuery = useQuery({
-    queryKey: ["report-progress", selectedStudentId],
-    queryFn: () => getReportProgress(selectedStudentId!),
-    enabled: Boolean(selectedStudentId),
+    queryKey: ["team-member-full-detail", user?.id, selectedStudentId, selectedDate],
+    queryFn: () => getTeamMemberFullDetail(user!.id, selectedStudentId!, selectedDate),
+    enabled: Boolean(user?.id && selectedStudentId),
   });
 
   if (isLoading) {
@@ -230,7 +223,7 @@ export function TeamPage() {
                 <CardDescription>Nhóm trưởng xem ảnh điểm danh và nhật ký của các bạn cùng ca.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-5">
-                {(detailQuery.isLoading || reportQuery.isLoading) && (
+                {detailQuery.isLoading && (
                   <div className="flex min-h-32 items-center justify-center">
                     <LoadingSpinner className="h-7 w-7" />
                   </div>
@@ -239,15 +232,15 @@ export function TeamPage() {
                   <div className="grid gap-3 md:grid-cols-3">
                     <div className="rounded-lg border bg-slate-50 p-4">
                       <p className="text-sm text-muted-foreground">Sinh viên</p>
-                      <p className="mt-1 font-semibold">{detailQuery.data.student.fullName}</p>
+                      <p className="mt-1 font-semibold">{detailQuery.data.user.fullName}</p>
                     </div>
                     <div className="rounded-lg border bg-slate-50 p-4">
-                      <p className="text-sm text-muted-foreground">Đã hoàn thành</p>
-                      <p className="mt-1 font-semibold">{detailQuery.data.completedCompanyShifts} ca</p>
+                      <p className="text-sm text-muted-foreground">Ca cùng ngày</p>
+                      <p className="mt-1 font-semibold">{detailQuery.data.scheduleRegistrations.length} ca</p>
                     </div>
                     <div className="rounded-lg border bg-slate-50 p-4">
-                      <p className="text-sm text-muted-foreground">Còn thiếu</p>
-                      <p className="mt-1 font-semibold">{detailQuery.data.remainingCompanyShifts} ca</p>
+                      <p className="text-sm text-muted-foreground">Nhật ký</p>
+                      <p className="mt-1 font-semibold">{detailQuery.data.reportEntries.length} bản ghi</p>
                     </div>
                   </div>
                 )}
@@ -255,26 +248,12 @@ export function TeamPage() {
                   <div className="space-y-3">
                     <h3 className="font-semibold">Ảnh điểm danh</h3>
                     {detailQuery.data?.attendances.length ? detailQuery.data.attendances.map((attendance) => (
-                      <div key={attendance.attendanceId} className="rounded-lg border p-4">
-                        <p className="font-medium">{formatDate(attendance.attendanceDate)} · {attendance.shiftName}</p>
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          Ảnh cá nhân {attendance.uploadedPersonalImages}/{attendance.requiredPersonalImages} · Ảnh nhóm {attendance.uploadedGroupImages}/{attendance.requiredGroupImages}
-                        </p>
-                        {!attendance.enoughImages && (
-                          <div className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
-                            {attendance.missingPersonalSlots.length > 0 && (
-                              <p>Thiếu TimeMark: {attendance.missingPersonalSlots.join(", ")}</p>
-                            )}
-                            {attendance.missingGroupSlots.length > 0 && (
-                              <p className={attendance.missingPersonalSlots.length > 0 ? "mt-1" : ""}>
-                                Thiếu ảnh nhóm: {attendance.missingGroupSlots.join(", ")}
-                              </p>
-                            )}
-                          </div>
-                        )}
-                        {attendanceImages(attendance).length > 0 && (
+                      <div key={attendance.id} className="rounded-lg border p-4">
+                        <p className="font-medium">{formatDate(attendance.attendanceDate)} · {attendance.shift.name}</p>
+                        <p className="mt-1 text-sm text-muted-foreground">Trạng thái: {attendance.status}</p>
+                        {attendance.images.length > 0 && (
                           <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                            {attendanceImages(attendance).slice(0, 4).map((image) => {
+                            {attendance.images.slice(0, 4).map((image) => {
                               const fullUrl = getFullImageUrl(image);
                               const displayUrl = getImageDisplayUrl(image);
                               if (!fullUrl || !displayUrl) return null;
@@ -282,7 +261,7 @@ export function TeamPage() {
                                 <a key={image.id} href={fullUrl} target="_blank" rel="noreferrer">
                                   <img
                                     src={displayUrl}
-                                    alt={image.label}
+                                    alt={`${image.imageType} ${image.phase} ${image.expectedTime}`}
                                     loading="lazy"
                                     onError={(event) => fallbackToFullImage(event, fullUrl)}
                                     className="aspect-video rounded-md border object-cover"
@@ -297,7 +276,7 @@ export function TeamPage() {
                   </div>
                   <div className="space-y-3">
                     <h3 className="font-semibold">Nhật ký thực tập</h3>
-                    {reportQuery.data?.entries.length ? reportQuery.data.entries.map((entry) => (
+                    {detailQuery.data?.reportEntries.length ? detailQuery.data.reportEntries.map(({ entry }) => (
                       <div key={entry.id} className="rounded-lg border p-4">
                         <div className="flex items-center gap-2 font-medium">
                           <FileText className="h-4 w-4" />

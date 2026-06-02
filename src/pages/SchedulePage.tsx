@@ -318,6 +318,12 @@ function InternSchedulePage() {
   );
   const dayRegistrations = registrationsForDay(scheduleQuery.data, selectedDate);
   const selectedDayShiftIds = new Set(dayRegistrations.map((item) => item.shift.id));
+  const selectedAndRegisteredShifts = useMemo(() => {
+    const byId = new Map<string, Shift>();
+    dayRegistrations.forEach((registration) => byId.set(registration.shift.id, registration.shift));
+    selectedShifts.forEach((shift) => byId.set(shift.id, shift));
+    return [...byId.values()];
+  }, [dayRegistrations, selectedShifts]);
   const registeredThisWeek = (scheduleQuery.data ?? []).filter((item) => item.status === "REGISTERED").length;
   const registeredCumulative = (cumulativeScheduleQuery.data ?? []).filter((item) => item.status === "REGISTERED").length;
   const weeklyLimit = policy?.targetShiftsPerWeek ?? 0;
@@ -337,7 +343,7 @@ function InternSchedulePage() {
     && selectedShiftIds.length <= dailyLimit
     && dayRegistrations.length + selectedShiftIds.length <= dailyLimit
     && selectedShiftIds.length <= remainingCumulative
-    && isAdjacent(selectedShifts);
+    && isAdjacent(selectedAndRegisteredShifts);
 
   const mutation = useMutation({
     mutationFn: () => {
@@ -573,9 +579,9 @@ function InternSchedulePage() {
               Quota tích lũy đến hết tuần này chỉ còn {remainingCumulative} ca có thể đăng ký. Nếu tuần trước đi ít hơn 6 ca thì tuần này sẽ được đăng ký bù.
             </p>
           )}
-          {selectedShiftIds.length > 1 && !isAdjacent(selectedShifts) && (
+          {selectedShiftIds.length > 0 && !isAdjacent(selectedAndRegisteredShifts) && (
             <p className="rounded-md bg-amber-50 p-3 text-sm text-amber-800">
-              Các ca được chọn phải liền kề theo thứ tự ca.
+              Các ca đã đăng ký và ca đang chọn phải liền kề theo thứ tự ca.
             </p>
           )}
           {selectedDateIsPast && (
