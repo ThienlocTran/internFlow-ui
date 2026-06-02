@@ -17,9 +17,7 @@ export function AdminStudentDetailPage() {
     enabled: Boolean(studentId),
   });
 
-  if (!studentId) {
-    return <ErrorState message="Thiếu mã sinh viên cần xem chi tiết." />;
-  }
+  if (!studentId) return <ErrorState message="Thiếu mã sinh viên cần xem chi tiết." />;
 
   if (detailQuery.isLoading) {
     return (
@@ -29,9 +27,7 @@ export function AdminStudentDetailPage() {
     );
   }
 
-  if (detailQuery.error || !detailQuery.data) {
-    return <ErrorState message="Không tải được chi tiết sinh viên từ backend." />;
-  }
+  if (detailQuery.error || !detailQuery.data) return <ErrorState message="Không tải được chi tiết sinh viên từ backend." />;
 
   const detail = detailQuery.data;
 
@@ -47,7 +43,7 @@ export function AdminStudentDetailPage() {
           </Button>
           <h1 className="text-3xl font-semibold tracking-normal">Chi tiết sinh viên</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Xem danh sách ngày đã đi, ca đi và trạng thái minh chứng.
+            Xem từng ngày đã đi, ảnh điểm danh, trạng thái thiếu minh chứng và nhật ký thực tập.
           </p>
         </div>
         <Badge tone={detail.student.role === "TEAM_LEADER" ? "warning" : "muted"}>{detail.student.role}</Badge>

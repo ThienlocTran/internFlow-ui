@@ -16,13 +16,28 @@ import { downloadCsv } from "@/utils/export-csv";
 import { formatDate } from "@/utils/date-format";
 
 const dayNames = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ nhật"];
+const BUSINESS_UTC_OFFSET_MS = 7 * 60 * 60 * 1000;
+
+function businessNow() {
+  const value = new Date(Date.now() + BUSINESS_UTC_OFFSET_MS).toISOString();
+  return {
+    date: value.slice(0, 10),
+    time: value.slice(11, 16),
+  };
+}
 
 function today() {
-  return toDateInputValue(new Date());
+  return businessNow().date;
 }
 
 function isPastDate(dateText: string) {
   return dateText < today();
+}
+
+function canCancelSchedule(registration: ScheduleRegistration) {
+  const now = businessNow();
+  const startTime = registration.shift.startTime.slice(0, 5);
+  return registration.scheduleDate > now.date || (registration.scheduleDate === now.date && startTime > now.time);
 }
 
 function toDateInputValue(date: Date) {
@@ -81,6 +96,10 @@ function isAdjacent(shifts: Shift[]) {
 
 function capacityFor(capacities: ScheduleCapacity[] | undefined, date: string, shiftId: string) {
   return capacities?.find((item) => item.scheduleDate === date && item.shiftId === shiftId);
+}
+
+function consumesScheduleSlot(user: User | null | undefined) {
+  return user?.role === "INTERN";
 }
 
 function initials(user: User) {
@@ -299,6 +318,12 @@ function InternSchedulePage() {
   );
   const dayRegistrations = registrationsForDay(scheduleQuery.data, selectedDate);
   const selectedDayShiftIds = new Set(dayRegistrations.map((item) => item.shift.id));
+  const selectedAndRegisteredShifts = useMemo(() => {
+    const byId = new Map<string, Shift>();
+    dayRegistrations.forEach((registration) => byId.set(registration.shift.id, registration.shift));
+    selectedShifts.forEach((shift) => byId.set(shift.id, shift));
+    return [...byId.values()];
+  }, [dayRegistrations, selectedShifts]);
   const registeredThisWeek = (scheduleQuery.data ?? []).filter((item) => item.status === "REGISTERED").length;
   const registeredCumulative = (cumulativeScheduleQuery.data ?? []).filter((item) => item.status === "REGISTERED").length;
   const weeklyLimit = policy?.targetShiftsPerWeek ?? 0;
@@ -308,14 +333,17 @@ function InternSchedulePage() {
   const remainingCumulative = Math.max(0, cumulativeLimit - registeredCumulative);
   const selectedDateIsPast = isPastDate(selectedDate);
   const hasPolicy = Boolean(policy);
+  const selectedShiftsHaveOpenSlots = !consumesScheduleSlot(user)
+    || selectedShiftIds.every((shiftId) => !capacityFor(capacityQuery.data, selectedDate, shiftId)?.full);
   const canSubmit =
     hasPolicy
     && !selectedDateIsPast
     && selectedShiftIds.length > 0
+    && selectedShiftsHaveOpenSlots
     && selectedShiftIds.length <= dailyLimit
     && dayRegistrations.length + selectedShiftIds.length <= dailyLimit
     && selectedShiftIds.length <= remainingCumulative
-    && isAdjacent(selectedShifts);
+    && isAdjacent(selectedAndRegisteredShifts);
 
   const mutation = useMutation({
     mutationFn: () => {
@@ -363,11 +391,11 @@ function InternSchedulePage() {
 
   const toggleShift = (shift: Shift) => {
     if (selectedDateIsPast) {
-      setNotice({ type: "warning", text: "NgÃ y nÃ y Ä‘Ã£ qua nÃªn khÃ´ng thá»ƒ Ä‘Äƒng kÃ½ thÃªm ca." });
+      setNotice({ type: "warning", text: "Ngày này đã qua nên không thể đăng ký thêm ca." });
       return;
     }
     const capacity = capacityFor(capacityQuery.data, selectedDate, shift.id);
-    if (capacity?.full) {
+    if (capacity?.full && consumesScheduleSlot(user)) {
       setNotice({ type: "warning", text: `${shift.name} đã đủ ${capacity.maxParticipants} bạn. Hãy chọn ca khác hoặc đợi có bạn rời ca.` });
       return;
     }
@@ -454,11 +482,12 @@ function InternSchedulePage() {
               const registered = selectedDayShiftIds.has(shift.id);
               const capacity = capacityFor(capacityQuery.data, selectedDate, shift.id);
               const full = Boolean(capacity?.full);
-              const disabled = selectedDateIsPast || full || registered;
+              const slotLocked = full && consumesScheduleSlot(user);
+              const disabled = selectedDateIsPast || slotLocked || registered;
               const registeredCount = capacity?.registeredCount ?? 0;
               const maxParticipants = capacity?.maxParticipants ?? shift.maxParticipants;
               const participants = capacity?.participants ?? [];
-              const percent = Math.min(100, Math.round((registeredCount / maxParticipants) * 100));
+              const percent = Math.min(100, Math.round((registeredCount / Math.max(1, maxParticipants)) * 100));
               return (
                 <button
                   key={shift.id}
@@ -486,8 +515,8 @@ function InternSchedulePage() {
                   </div>
                   <div className="flex items-center justify-between gap-3">
                     <p className="font-medium">{shift.name}</p>
-                    <Badge tone={full ? "warning" : registered ? "success" : "muted"}>
-                      {full ? "Đủ chỗ" : registered ? "Đã đăng ký" : getShiftGroup(shift)}
+                    <Badge tone={slotLocked ? "warning" : registered ? "success" : "muted"}>
+                      {slotLocked ? "Đủ chỗ" : registered ? "Đã đăng ký" : getShiftGroup(shift)}
                     </Badge>
                   </div>
                   <p className={selected ? "mt-2 text-sm text-slate-200" : "mt-2 text-sm text-muted-foreground"}>
@@ -550,19 +579,19 @@ function InternSchedulePage() {
               Quota tích lũy đến hết tuần này chỉ còn {remainingCumulative} ca có thể đăng ký. Nếu tuần trước đi ít hơn 6 ca thì tuần này sẽ được đăng ký bù.
             </p>
           )}
-          {selectedShiftIds.length > 1 && !isAdjacent(selectedShifts) && (
+          {selectedShiftIds.length > 0 && !isAdjacent(selectedAndRegisteredShifts) && (
             <p className="rounded-md bg-amber-50 p-3 text-sm text-amber-800">
-              Các ca được chọn phải liền kề theo thứ tự ca.
+              Các ca đã đăng ký và ca đang chọn phải liền kề theo thứ tự ca.
             </p>
           )}
           {selectedDateIsPast && (
             <p className="rounded-md bg-amber-50 p-3 text-sm text-amber-800">
-              NgÃ y Ä‘Ã£ qua sáº½ khÃ´ng cho Ä‘Äƒng kÃ½ má»›i hoáº·c rá»i ca Ä‘á»ƒ trÃ¡nh sá»­a lá»‹ch sau khi Ä‘Ã£ Ä‘i thá»±c táº­p.
+              Ngày đã qua sẽ không cho đăng ký mới hoặc rời ca để tránh sửa lịch sau khi đã đi thực tập.
             </p>
           )}
           {!policy && (
             <p className="rounded-md bg-red-50 p-3 text-sm text-red-700">
-              Vai trÃ² cá»§a báº¡n chÆ°a Ä‘Æ°á»£c cáº¥u hÃ¬nh chÃ­nh sÃ¡ch ca nÃªn chÆ°a thá»ƒ Ä‘Äƒng kÃ½.
+              Vai trò của bạn chưa được cấu hình chính sách ca nên chưa thể đăng ký.
             </p>
           )}
           {notice && <p className={`rounded-md p-3 text-sm ${noticeClass}`}>{notice.text}</p>}
@@ -585,7 +614,9 @@ function InternSchedulePage() {
           {scheduleQuery.data && scheduleQuery.data.filter((item) => item.status === "REGISTERED").length > 0 ? (
             scheduleQuery.data
               .filter((item) => item.status === "REGISTERED")
-              .map((item) => (
+              .map((item) => {
+                const canCancel = canCancelSchedule(item);
+                return (
                 <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-white p-4">
                   <div>
                     <p className="font-medium">
@@ -600,7 +631,8 @@ function InternSchedulePage() {
                     <Button
                       size="sm"
                       variant="outline"
-                      disabled={cancelMutation.isPending || isPastDate(item.scheduleDate)}
+                      disabled={cancelMutation.isPending || !canCancel}
+                      title={canCancel ? undefined : "Chi co the roi ca truoc gio bat dau"}
                       onClick={() => cancelMutation.mutate(item.id)}
                     >
                       <XCircle className="h-4 w-4" />
@@ -608,7 +640,8 @@ function InternSchedulePage() {
                     </Button>
                   </div>
                 </div>
-              ))
+                );
+              })
           ) : (
             <div className="rounded-lg border border-dashed p-8 text-center">
               <CalendarDays className="mx-auto h-8 w-8 text-muted-foreground" />

@@ -18,6 +18,8 @@ export type User = {
   cohort?: InternshipCohort | null;
   role: UserRole;
   active: boolean;
+  profileComplete: boolean;
+  missingProfileFields: string[];
 };
 
 export type InternshipCohort = {
@@ -151,6 +153,14 @@ export type ScheduleCapacity = {
 export type ShiftPeer = {
   user: User;
   schedules: ScheduleRegistration[];
+};
+
+export type TeamMemberFullDetail = {
+  user: User;
+  date: string;
+  scheduleRegistrations: ScheduleRegistration[];
+  attendances: Attendance[];
+  reportEntries: DailyReportEntry[];
 };
 
 export type AttendanceAudit = {

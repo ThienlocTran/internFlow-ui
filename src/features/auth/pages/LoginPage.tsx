@@ -10,6 +10,7 @@ import { useAuthStore } from "@/store/auth-store";
 import { profileSchema, type ProfileFormValues } from "@/features/auth/schemas/profile.schema";
 import { updateProfile } from "@/services/user.service";
 import { loginWithGoogle } from "@/services/auth.service";
+import { getMissingProfileFields, isProfileComplete, profileFieldLabels } from "@/utils/profile-completeness";
 import type { User } from "@/types/api";
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
@@ -95,12 +96,8 @@ export function LoginPage() {
     },
   });
 
-  const hasCompleteProfile = (user: User) => {
-    if (user.role !== "INTERN") return true;
-    return Boolean(
-      user.fullName && user.studentCode && user.studentClass && user.school && user.phone
-    );
-  };
+  const profileMissingFields = pendingUser ? getMissingProfileFields(pendingUser) : [];
+
 
   const requireProfileCompletion = (user: User) => {
     setPendingUser(user);
@@ -119,7 +116,7 @@ export function LoginPage() {
     setLoginError(null);
     try {
       const user = await loginWithGoogle(credential);
-      if (!hasCompleteProfile(user)) {
+      if (!isProfileComplete(user)) {
         setPendingCredential(credential);
         requireProfileCompletion(user);
         return;
@@ -262,6 +259,11 @@ export function LoginPage() {
                 </>
               ) : (
                 <form className="space-y-3" onSubmit={profileForm.handleSubmit(handleCreateProfile)}>
+                  {profileMissingFields.length > 0 && (
+                    <p className="rounded-md bg-amber-50 p-3 text-sm leading-6 text-amber-800">
+                      Ho so thieu thong tin bat buoc cho mail cuoi ngay: {profileMissingFields.map((field) => profileFieldLabels[field] ?? field).join(", ")}.
+                    </p>
+                  )}
                   <Input readOnly className="bg-slate-100" {...profileForm.register("email")} />
                   <Input placeholder="Họ và tên" {...profileForm.register("fullName")} />
                   {profileForm.formState.errors.fullName && (
