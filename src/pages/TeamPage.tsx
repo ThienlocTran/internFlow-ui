@@ -1,5 +1,5 @@
 import { CalendarDays, Eye, FileText, SlidersHorizontal, UsersRound } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -13,7 +13,7 @@ import { getLeaderShiftPeers, getTeamMemberFullDetail } from "@/services/team.se
 import { useAuthStore } from "@/store/auth-store";
 import { fallbackToFullImage, getFullImageUrl, getImageDisplayUrl } from "@/utils/cloudinary-image";
 import { formatDate } from "@/utils/date-format";
-import type { AttendanceAudit } from "@/types/api";
+import type { AttendanceAudit, Shift } from "@/types/api";
 
 const roleLabels: Record<string, string> = {
   INTERN: "Sinh viên thường",
@@ -46,6 +46,7 @@ export function TeamPage() {
   const user = useAuthStore((state) => state.user);
   const [selectedDate, setSelectedDate] = useState(today());
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
+  const [selectedManagedShiftId, setSelectedManagedShiftId] = useState<string | null>(null);
   const { data: policies, isLoading, error } = useQuery({ queryKey: ["role-policies"], queryFn: getRolePolicies });
   const peersQuery = useQuery({
     queryKey: ["leader-shift-peers", user?.id, selectedDate],
@@ -75,6 +76,14 @@ export function TeamPage() {
   const managementPolicies = policies.filter((policy) => policy.role === "ADMIN");
   const isAdmin = user?.role === "ADMIN";
   const peers = peersQuery.data ?? [];
+  const managedShifts = useMemo(() => {
+    const shifts = new Map<string, Shift>();
+    peers.find((peer) => peer.user.id === user?.id)?.schedules.forEach((schedule) => shifts.set(schedule.shift.id, schedule.shift));
+    if (shifts.size === 0) peers.flatMap((peer) => peer.schedules).forEach((schedule) => shifts.set(schedule.shift.id, schedule.shift));
+    return [...shifts.values()].sort((a, b) => a.shiftOrder - b.shiftOrder || a.startTime.localeCompare(b.startTime));
+  }, [peers, user?.id]);
+  const activeManagedShiftId = selectedManagedShiftId ?? managedShifts[0]?.id ?? null;
+  const selectedShiftPeers = peers.filter((peer) => peer.user.id !== user?.id && peer.schedules.some((schedule) => schedule.shift.id === activeManagedShiftId));
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -181,8 +190,25 @@ export function TeamPage() {
                   <LoadingSpinner className="h-7 w-7" />
                 </div>
               ) : peers.length > 0 ? (
-                <div className="grid gap-3">
-                  {peers.map((peer) => (
+                <div className="space-y-4">
+                  <div className="flex flex-wrap gap-2">
+                    {managedShifts.map((shift) => (
+                      <button
+                        key={shift.id}
+                        type="button"
+                        className={`rounded-lg border px-4 py-3 text-left transition ${activeManagedShiftId === shift.id ? "border-slate-950 bg-slate-950 text-white" : "bg-white hover:bg-slate-50"}`}
+                        onClick={() => {
+                          setSelectedManagedShiftId(shift.id);
+                          setSelectedStudentId(null);
+                        }}
+                      >
+                        <p className="font-semibold">{shift.name}</p>
+                        <p className={activeManagedShiftId === shift.id ? "mt-1 text-xs text-slate-200" : "mt-1 text-xs text-muted-foreground"}>{shift.startTime.slice(0, 5)}-{shift.endTime.slice(0, 5)}</p>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="grid gap-3">
+                  {selectedShiftPeers.map((peer) => (
                     <div key={peer.user.id} className="rounded-lg border bg-white p-4">
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
@@ -191,11 +217,12 @@ export function TeamPage() {
                             {peer.user.studentCode || "Chưa có MSSV"} · {peer.user.studentClass || "Chưa có lớp"}
                           </p>
                           <div className="mt-3 flex flex-wrap gap-2">
-                            {peer.schedules.map((schedule) => (
-                              <Badge key={schedule.id} tone={peer.user.id === user?.id ? "warning" : "muted"}>
+                            {peer.schedules.filter((schedule) => schedule.shift.id === activeManagedShiftId).map((schedule) => (
+                              <Badge key={schedule.id} tone="muted">
                                 {schedule.shift.name} {schedule.shift.startTime.slice(0, 5)}-{schedule.shift.endTime.slice(0, 5)}
                               </Badge>
                             ))}
+                            <Badge tone="warning">Cần kiểm tra chi tiết</Badge>
                           </div>
                         </div>
                         <Button size="sm" variant="outline" onClick={() => setSelectedStudentId(peer.user.id)}>
@@ -205,6 +232,8 @@ export function TeamPage() {
                       </div>
                     </div>
                   ))}
+                  {selectedShiftPeers.length === 0 && <p className="rounded-lg border border-dashed p-5 text-sm text-muted-foreground">Ca này chưa có sinh viên khác đăng ký.</p>}
+                  </div>
                 </div>
               ) : (
                 <EmptyState

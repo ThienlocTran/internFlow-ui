@@ -786,6 +786,31 @@ function InternAttendancePage() {
     })();
   };
 
+  const handleBulkSlotUpload = (files: FileList | null) => {
+    if (!files || !currentAttendance) return;
+    const slotQueue = [
+      ...personalSlots.map((slot, index) => ({
+        key: fileKey("PERSONAL_TIMEMARK", "DURING_SHIFT", slot.time),
+        imageType: "PERSONAL_TIMEMARK" as AttendanceImageType,
+        phase: "DURING_SHIFT" as AttendanceImagePhase,
+        expectedTime: slot.time,
+        displayOrder: index,
+      })),
+      ...groupSlots.map((slot, index) => ({
+        key: fileKey("GROUP", "DURING_SHIFT", slot.time),
+        imageType: "GROUP" as AttendanceImageType,
+        phase: "DURING_SHIFT" as AttendanceImagePhase,
+        expectedTime: slot.time,
+        displayOrder: index,
+      })),
+    ].filter((slot) => !savedSlotImage(currentAttendance, slot.imageType, slot.phase, slot.expectedTime));
+
+    Array.from(files).slice(0, slotQueue.length).forEach((file, index) => {
+      const slot = slotQueue[index];
+      handlePersistedSlotChange(slot.key, file, slot.imageType, slot.phase, slot.expectedTime, slot.displayOrder);
+    });
+  };
+
 
   const isBusy = saveMutation.isPending || checkoutMutation.isPending;
 
@@ -922,6 +947,21 @@ function InternAttendancePage() {
               {saveMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
               Checkin
             </Button>
+
+            {currentAttendance && (
+              <div className="rounded-lg border bg-slate-50 p-4">
+                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <p className="font-medium">Upload nhiều ảnh giữa ca</p>
+                    <p className="mt-1 text-sm text-muted-foreground">Hệ thống map theo thứ tự chọn file: TimeMark giữa ca trước, rồi ảnh nhóm giữa ca.</p>
+                  </div>
+                  <Input type="file" multiple accept="image/*" className="max-w-sm bg-white" onChange={(event) => {
+                    handleBulkSlotUpload(event.target.files);
+                    event.target.value = "";
+                  }} />
+                </div>
+              </div>
+            )}
 
             <div className="grid gap-4 lg:grid-cols-2">
               <div className="space-y-3">

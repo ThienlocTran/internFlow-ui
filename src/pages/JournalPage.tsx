@@ -884,7 +884,7 @@ export function JournalPage() {
               </CardContent>
             </Card>
 
-            <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
+            <div className="hidden gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
               <Card className="bg-white/90">
                 <CardHeader>
                   <CardTitle>{"Timeline b\u00e0i vi\u1ebft"}</CardTitle>
