@@ -83,6 +83,10 @@ function capacityFor(capacities: ScheduleCapacity[] | undefined, date: string, s
   return capacities?.find((item) => item.scheduleDate === date && item.shiftId === shiftId);
 }
 
+function consumesScheduleSlot(user: User | null | undefined) {
+  return user?.role === "INTERN";
+}
+
 function initials(user: User) {
   const source = user.fullName || user.email;
   return source
@@ -308,10 +312,13 @@ function InternSchedulePage() {
   const remainingCumulative = Math.max(0, cumulativeLimit - registeredCumulative);
   const selectedDateIsPast = isPastDate(selectedDate);
   const hasPolicy = Boolean(policy);
+  const selectedShiftsHaveOpenSlots = !consumesScheduleSlot(user)
+    || selectedShiftIds.every((shiftId) => !capacityFor(capacityQuery.data, selectedDate, shiftId)?.full);
   const canSubmit =
     hasPolicy
     && !selectedDateIsPast
     && selectedShiftIds.length > 0
+    && selectedShiftsHaveOpenSlots
     && selectedShiftIds.length <= dailyLimit
     && dayRegistrations.length + selectedShiftIds.length <= dailyLimit
     && selectedShiftIds.length <= remainingCumulative
@@ -367,7 +374,7 @@ function InternSchedulePage() {
       return;
     }
     const capacity = capacityFor(capacityQuery.data, selectedDate, shift.id);
-    if (capacity?.full) {
+    if (capacity?.full && consumesScheduleSlot(user)) {
       setNotice({ type: "warning", text: `${shift.name} đã đủ ${capacity.maxParticipants} bạn. Hãy chọn ca khác hoặc đợi có bạn rời ca.` });
       return;
     }
@@ -454,11 +461,12 @@ function InternSchedulePage() {
               const registered = selectedDayShiftIds.has(shift.id);
               const capacity = capacityFor(capacityQuery.data, selectedDate, shift.id);
               const full = Boolean(capacity?.full);
-              const disabled = selectedDateIsPast || full || registered;
+              const slotLocked = full && consumesScheduleSlot(user);
+              const disabled = selectedDateIsPast || slotLocked || registered;
               const registeredCount = capacity?.registeredCount ?? 0;
               const maxParticipants = capacity?.maxParticipants ?? shift.maxParticipants;
               const participants = capacity?.participants ?? [];
-              const percent = Math.min(100, Math.round((registeredCount / maxParticipants) * 100));
+              const percent = Math.min(100, Math.round((registeredCount / Math.max(1, maxParticipants)) * 100));
               return (
                 <button
                   key={shift.id}
@@ -486,8 +494,8 @@ function InternSchedulePage() {
                   </div>
                   <div className="flex items-center justify-between gap-3">
                     <p className="font-medium">{shift.name}</p>
-                    <Badge tone={full ? "warning" : registered ? "success" : "muted"}>
-                      {full ? "Đủ chỗ" : registered ? "Đã đăng ký" : getShiftGroup(shift)}
+                    <Badge tone={slotLocked ? "warning" : registered ? "success" : "muted"}>
+                      {slotLocked ? "Đủ chỗ" : registered ? "Đã đăng ký" : getShiftGroup(shift)}
                     </Badge>
                   </div>
                   <p className={selected ? "mt-2 text-sm text-slate-200" : "mt-2 text-sm text-muted-foreground"}>
