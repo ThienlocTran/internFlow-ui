@@ -55,6 +55,15 @@ export function TeamPage() {
     queryFn: () => getTeamMemberFullDetail(user!.id, selectedStudentId!, selectedDate),
     enabled: Boolean(user?.id && selectedStudentId),
   });
+  const peers = peersQuery.data ?? [];
+  const managedShifts = useMemo(() => {
+    const shifts = new Map<string, Shift>();
+    peers.find((peer) => peer.user.id === user?.id)?.schedules.forEach((schedule) => shifts.set(schedule.shift.id, schedule.shift));
+    if (shifts.size === 0) peers.flatMap((peer) => peer.schedules).forEach((schedule) => shifts.set(schedule.shift.id, schedule.shift));
+    return [...shifts.values()].sort((a, b) => a.shiftOrder - b.shiftOrder || a.startTime.localeCompare(b.startTime));
+  }, [peers, user?.id]);
+  const activeManagedShiftId = selectedManagedShiftId ?? managedShifts[0]?.id ?? null;
+  const selectedShiftPeers = peers.filter((peer) => peer.user.id !== user?.id && peer.schedules.some((schedule) => schedule.shift.id === activeManagedShiftId));
 
   if (isLoading) {
     return (
@@ -72,16 +81,6 @@ export function TeamPage() {
   const leaderPolicy = policies.find((policy) => policy.role === "TEAM_LEADER");
   const managementPolicies = policies.filter((policy) => policy.role === "ADMIN");
   const isAdmin = user?.role === "ADMIN";
-  const peers = peersQuery.data ?? [];
-  const managedShifts = useMemo(() => {
-    const shifts = new Map<string, Shift>();
-    peers.find((peer) => peer.user.id === user?.id)?.schedules.forEach((schedule) => shifts.set(schedule.shift.id, schedule.shift));
-    if (shifts.size === 0) peers.flatMap((peer) => peer.schedules).forEach((schedule) => shifts.set(schedule.shift.id, schedule.shift));
-    return [...shifts.values()].sort((a, b) => a.shiftOrder - b.shiftOrder || a.startTime.localeCompare(b.startTime));
-  }, [peers, user?.id]);
-  const activeManagedShiftId = selectedManagedShiftId ?? managedShifts[0]?.id ?? null;
-  const selectedShiftPeers = peers.filter((peer) => peer.user.id !== user?.id && peer.schedules.some((schedule) => schedule.shift.id === activeManagedShiftId));
-
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <div>

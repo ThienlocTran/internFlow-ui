@@ -17,6 +17,7 @@ import { formatDate } from "@/utils/date-format";
 
 const dayNames = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ nhật"];
 const BUSINESS_UTC_OFFSET_MS = 7 * 60 * 60 * 1000;
+const TEAM_LEADER_DEFAULT_DAILY_LIMIT = 3;
 const TEAM_LEADER_MAKEUP_DAILY_LIMIT = 4;
 
 function businessNow() {
@@ -139,10 +140,11 @@ function hasMakeupQuota(user: User | null | undefined, policy: RolePolicy | null
 
 function effectiveDailyLimit(user: User | null | undefined, policy: RolePolicy | null, registrations: ScheduleRegistration[] | undefined, currentWeekStart: string) {
   if (!policy) return 0;
+  const defaultLimit = user?.role === "TEAM_LEADER" ? Math.max(policy.maxShiftsPerDay, TEAM_LEADER_DEFAULT_DAILY_LIMIT) : policy.maxShiftsPerDay;
   if (hasMakeupQuota(user, policy, registrations, currentWeekStart)) {
-    return Math.max(policy.maxShiftsPerDay, TEAM_LEADER_MAKEUP_DAILY_LIMIT);
+    return Math.max(defaultLimit, TEAM_LEADER_MAKEUP_DAILY_LIMIT);
   }
-  return policy.maxShiftsPerDay;
+  return defaultLimit;
 }
 
 function AdminShiftCapacityPage() {
