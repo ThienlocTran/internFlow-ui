@@ -16,13 +16,28 @@ import { downloadCsv } from "@/utils/export-csv";
 import { formatDate } from "@/utils/date-format";
 
 const dayNames = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ nhật"];
+const BUSINESS_UTC_OFFSET_MS = 7 * 60 * 60 * 1000;
+
+function businessNow() {
+  const value = new Date(Date.now() + BUSINESS_UTC_OFFSET_MS).toISOString();
+  return {
+    date: value.slice(0, 10),
+    time: value.slice(11, 16),
+  };
+}
 
 function today() {
-  return toDateInputValue(new Date());
+  return businessNow().date;
 }
 
 function isPastDate(dateText: string) {
   return dateText < today();
+}
+
+function canCancelSchedule(registration: ScheduleRegistration) {
+  const now = businessNow();
+  const startTime = registration.shift.startTime.slice(0, 5);
+  return registration.scheduleDate > now.date || (registration.scheduleDate === now.date && startTime > now.time);
 }
 
 function toDateInputValue(date: Date) {
@@ -593,7 +608,9 @@ function InternSchedulePage() {
           {scheduleQuery.data && scheduleQuery.data.filter((item) => item.status === "REGISTERED").length > 0 ? (
             scheduleQuery.data
               .filter((item) => item.status === "REGISTERED")
-              .map((item) => (
+              .map((item) => {
+                const canCancel = canCancelSchedule(item);
+                return (
                 <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-white p-4">
                   <div>
                     <p className="font-medium">
@@ -608,7 +625,8 @@ function InternSchedulePage() {
                     <Button
                       size="sm"
                       variant="outline"
-                      disabled={cancelMutation.isPending || isPastDate(item.scheduleDate)}
+                      disabled={cancelMutation.isPending || !canCancel}
+                      title={canCancel ? undefined : "Chi co the roi ca truoc gio bat dau"}
                       onClick={() => cancelMutation.mutate(item.id)}
                     >
                       <XCircle className="h-4 w-4" />
@@ -616,7 +634,8 @@ function InternSchedulePage() {
                     </Button>
                   </div>
                 </div>
-              ))
+                );
+              })
           ) : (
             <div className="rounded-lg border border-dashed p-8 text-center">
               <CalendarDays className="mx-auto h-8 w-8 text-muted-foreground" />
