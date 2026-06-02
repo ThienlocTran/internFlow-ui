@@ -6,6 +6,7 @@ import {
   Database,
   FileCheck2,
   BookOpenText,
+  GitCommitVertical,
   LayoutDashboard,
   ShieldCheck,
   SlidersHorizontal,
@@ -35,9 +36,10 @@ const navItems: NavItem[] = [
   { label: "Điểm danh của tôi", href: "/attendance", icon: ClipboardCheck, roles: ["INTERN", "TEAM_LEADER"] },
   { label: "Lịch đăng ký", href: "/schedule", icon: CalendarDays, roles: ["INTERN", "TEAM_LEADER"] },
   { label: "Nhật ký thực tập", href: "/journal", icon: BookOpenText, roles: ["INTERN", "TEAM_LEADER"] },
+  { label: "Lịch sử nhật ký", href: "/journal/history", icon: GitCommitVertical, roles: ["INTERN", "TEAM_LEADER"] },
   { label: "Quản lý ca của tôi", href: "/team", icon: UsersRound, roles: ["TEAM_LEADER"] },
   { label: "Tổng quan quản trị", href: "/dashboard", icon: ShieldCheck, roles: ["ADMIN"] },
-  { label: "Người dùng & nhóm", href: "/admin", icon: UsersRound, roles: ["ADMIN"] },
+  { label: "Người dùng & nhóm", href: "/admin", icon: UsersRound, roles: ["ADMIN"], exact: true },
   { label: "Kiểm tra điểm danh", href: "/attendance", icon: FileCheck2, roles: ["ADMIN"] },
   { label: "Nhật ký sinh viên", href: "/journal", icon: BookOpenText, roles: ["ADMIN"] },
   { label: "Ca & sức chứa", href: "/admin/shifts", icon: Database, roles: ["ADMIN"] },
@@ -54,7 +56,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const policyText = isAdmin
     ? "Quản lý người dùng, ca, sức chứa, báo cáo và kiểm tra điểm danh."
     : isLeader
-      ? "Nhóm trưởng là sinh viên thực tập: tối đa 3 ca/ngày, 9 ca/tuần và quản lý các bạn trùng ca."
+      ? "Nhóm trưởng là sinh viên thực tập: tối đa 3 ca/ngày, 4 ca/ngày khi đăng ký bù và quản lý các bạn trùng ca."
       : "Sinh viên thường 6 buổi/tuần. Đủ 6 ca tối sẽ được cộng 1 ca bonus.";
 
   return (

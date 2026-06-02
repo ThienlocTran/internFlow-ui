@@ -7,9 +7,11 @@ import { ErrorState } from "@/components/common/ErrorState";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { useAuthStore } from "@/store/auth-store";
 import { useDashboardSummary } from "@/features/dashboard/hooks/use-dashboard-summary";
+import { useNavigate } from "react-router-dom";
 
 export function TeamLeaderDashboardPage() {
   const user = useAuthStore((state) => state.user);
+  const navigate = useNavigate();
   const { data, isLoading, error } = useDashboardSummary();
   const policy = data?.rolePolicies.find((item) => item.role === "TEAM_LEADER");
 
@@ -40,7 +42,7 @@ export function TeamLeaderDashboardPage() {
       </section>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <DashboardCard label="Người dùng hệ thống" value={String(data.users.length)} helper="Tài khoản đang quản lý" trend="InternFlow" icon={UsersRound} />
+        <DashboardCard label="Vai trò của tôi" value="TEAM_LEADER" helper="Quản lý sinh viên trùng ca" trend="InternFlow" icon={UsersRound} />
         <DashboardCard label="Ca đang mở" value={String(data.shifts.length)} helper="Khung giờ áp dụng" trend="9 bạn/ca" icon={CalendarCheck2} />
         <DashboardCard label="Tối đa/ngày" value={policy ? `${policy.maxShiftsPerDay} ca` : "Chưa có"} helper="Nhóm trưởng" trend="Theo chính sách" icon={AlertTriangle} />
         <DashboardCard label="Mục tiêu/tuần" value={policy ? `${policy.targetShiftsPerWeek} ca` : "Chưa có"} helper="Quota nhóm trưởng" trend="Theo chính sách" icon={CheckCircle2} />
@@ -68,7 +70,7 @@ export function TeamLeaderDashboardPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             {data.shifts.map((shift) => (
-              <div key={shift.id} className="rounded-lg border bg-white p-4">
+              <button key={shift.id} type="button" className="w-full rounded-lg border bg-white p-4 text-left transition hover:border-slate-400 hover:bg-slate-50" onClick={() => navigate("/team")}>
                 <div className="flex items-center justify-between">
                   <p className="font-medium">{shift.name}</p>
                   <Badge tone="muted">{shift.maxParticipants} bạn</Badge>
@@ -76,7 +78,7 @@ export function TeamLeaderDashboardPage() {
                 <p className="mt-2 text-sm text-muted-foreground">
                   {shift.startTime.slice(0, 5)} - {shift.endTime.slice(0, 5)}
                 </p>
-              </div>
+              </button>
             ))}
           </CardContent>
         </Card>

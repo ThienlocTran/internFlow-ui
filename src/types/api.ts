@@ -153,6 +153,20 @@ export type ScheduleCapacity = {
 export type ShiftPeer = {
   user: User;
   schedules: ScheduleRegistration[];
+  compliance?: {
+    missingImages: number;
+    missingReportPages: number;
+    enoughImages: boolean;
+    enoughReportPages: boolean;
+  };
+};
+
+export type TeamMemberFullDetail = {
+  user: User;
+  date: string;
+  scheduleRegistrations: ScheduleRegistration[];
+  attendances: Attendance[];
+  reportEntries: DailyReportEntry[];
 };
 
 export type AttendanceAudit = {
