@@ -5,7 +5,6 @@ import {
   CalendarDays,
   CheckCircle2,
   FileText,
-  GitCommitVertical,
   Loader2,
   Mail,
   Search,
@@ -23,7 +22,6 @@ import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import {
   getDailyReportEntries,
   getReportProgress,
-  getReportRevisions,
   saveReportEntry,
   submitDailyReportMail,
 } from "@/services/report-journal.service";
@@ -136,9 +134,6 @@ function attendancePreviewImages(attendance: Attendance) {
   if (attendance.checkinTimemarkImageUrl) {
     items.push({ key: `${attendance.id}-checkin-personal`, label: "TimeMark đầu ca", url: attendance.checkinTimemarkImageUrl });
   }
-  if (attendance.checkinGroupImageUrl) {
-    items.push({ key: `${attendance.id}-checkin-group`, label: "Ảnh nhóm đầu ca", url: attendance.checkinGroupImageUrl });
-  }
   attendance.images.forEach((image: AttendanceImage) => {
     items.push({
       key: image.id,
@@ -151,9 +146,6 @@ function attendancePreviewImages(attendance: Attendance) {
   });
   if (attendance.checkoutTimemarkImageUrl) {
     items.push({ key: `${attendance.id}-checkout-personal`, label: "TimeMark cuối ca", url: attendance.checkoutTimemarkImageUrl });
-  }
-  if (attendance.checkoutGroupImageUrl) {
-    items.push({ key: `${attendance.id}-checkout-group`, label: "Ảnh nhóm cuối ca", url: attendance.checkoutGroupImageUrl });
   }
   return items;
 }
@@ -276,7 +268,6 @@ export function JournalPage() {
   const [selectedDailyEntry, setSelectedDailyEntry] = useState<DailyReportEntry | null>(null);
   const [content, setContent] = useState("");
   const [referenceLinks, setReferenceLinks] = useState("");
-  const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [wordUpload, setWordUpload] = useState<WordUploadState>({ status: "idle" });
   const [uploadedWordDocument, setUploadedWordDocument] = useState<UploadedWordDocument | null>(null);
@@ -314,12 +305,6 @@ export function JournalPage() {
     queryFn: () => getAttendances(currentUser!.id, workDate),
     enabled: canUseStudentEditor(currentUser?.role) && Boolean(currentUser?.id) && Boolean(workDate),
   });
-  const revisionsQuery = useQuery({
-    queryKey: ["report-revisions", selectedEntryId],
-    queryFn: () => getReportRevisions(selectedEntryId!),
-    enabled: Boolean(selectedEntryId),
-  });
-
   const targetUser = useMemo(() => {
     if (!isAdmin) return currentUser;
     return selectedDailyEntry?.document.user;
@@ -359,7 +344,6 @@ export function JournalPage() {
           : "Đã lưu nhật ký, nhưng vẫn chưa đủ số trang yêu cầu.",
       );
       queryClient.invalidateQueries({ queryKey: ["report-progress", currentUser?.id] });
-      setSelectedEntryId(entry.id);
       // Clear localStorage draft after successful server save
       if (currentUser?.id) clearDraft(currentUser.id, workDate);
     },
@@ -392,7 +376,6 @@ export function JournalPage() {
         content,
         referenceLinks,
       });
-      setSelectedEntryId(entryForMail.id);
       queryClient.invalidateQueries({ queryKey: ["report-progress", currentUser.id] });
       if (currentUser?.id) clearDraft(currentUser.id, workDate);
     }
@@ -508,24 +491,11 @@ export function JournalPage() {
   };
 
   // ── Entry navigation helpers ─────────────────────────────────────────────────
-  const loadEntry = (entry: ReportEntry) => {
-    setWorkDate(entry.workDate);
-    setContent(entry.content ?? "");
-    setReferenceLinks(entry.referenceLinks ?? "");
-    setSelectedEntryId(entry.id);
-    setUploadedWordDocument(null);
-    setIsReviewOpen(false);
-    setWordFilePage(null);
-    setWordUpload({ status: "idle" });
-    setNotice(null);
-  };
-
   const openDailyEntry = (item: DailyReportEntry) => {
     setSelectedDailyEntry(item);
     setSelectedUserId(item.document.user.id);
     setContent(item.entry.content ?? "");
     setReferenceLinks(item.entry.referenceLinks ?? "");
-    setSelectedEntryId(item.entry.id);
     setUploadedWordDocument(null);
     setIsReviewOpen(false);
     setWordFilePage(null);
@@ -533,7 +503,6 @@ export function JournalPage() {
     setNotice(null);
   };
 
-  const entries = progressQuery.data?.entries ?? [];
 
   // ── localStorage draft persistence ──────────────────────────────────────────
   // Load draft when workDate changes (for student editor only)
@@ -613,8 +582,7 @@ export function JournalPage() {
                     setWorkDate(event.target.value);
                     setSelectedDailyEntry(null);
                     setSelectedUserId("");
-                    setSelectedEntryId(null);
-                  }}
+                                  }}
                 />
               </div>
             </div>
@@ -695,8 +663,7 @@ export function JournalPage() {
                 value={selectedUserId}
                 onChange={(event) => {
                   setSelectedUserId(event.target.value);
-                  setSelectedEntryId(null);
-                }}
+                              }}
               >
                 <option value="">Chọn sinh viên</option>
                 {(usersQuery.data ?? []).filter((user) => user.role === "INTERN").map((user) => (
@@ -1140,79 +1107,6 @@ export function JournalPage() {
                 </CardContent>
               </Card>
             )}
-
-            {/* Right sidebar ──────────────────────────────────────────── */}
-          <div className="hidden space-y-6">
-            <Card className="bg-white/90">
-              <CardHeader>
-                <CardTitle>Timeline bài viết</CardTitle>
-                <CardDescription>Bấm từng ngày để xem nội dung và lịch sử sửa.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {entries.length > 0 ? entries.map((entry) => (
-                  <button
-                    key={entry.id}
-                    type="button"
-                    className="w-full rounded-lg border bg-white p-4 text-left transition hover:bg-slate-50"
-                    onClick={() => loadEntry(entry)}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-medium">{entry.workDate}</p>
-                        <p className="mt-1 text-sm text-muted-foreground">{entry.shiftCodes || "Chưa nhận diện ca"}</p>
-                      </div>
-                      <Badge tone={entry.enoughPages ? "success" : "warning"}>{statusLabel(entry)}</Badge>
-                    </div>
-                    <p className="mt-3 line-clamp-2 text-sm text-muted-foreground">{entry.content || "Chưa có nội dung"}</p>
-                  </button>
-                )) : (
-                  <div className="rounded-lg border border-dashed p-8 text-center">
-                    <BookOpenText className="mx-auto h-8 w-8 text-muted-foreground" />
-                    <p className="mt-3 font-medium">Chưa có nhật ký</p>
-                    <p className="mt-1 text-sm text-muted-foreground">Sinh viên lưu bài đầu tiên thì timeline sẽ hiện ở đây.</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {selectedEntryId && (
-              <Card className="bg-white/90">
-                <CardHeader>
-                  <CardTitle>Lịch sử chỉnh sửa</CardTitle>
-                  <CardDescription>Xem nhanh hôm nay sinh viên đã thêm/sửa gì.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {revisionsQuery.isLoading && <LoadingSpinner className="h-6 w-6" />}
-                  {(revisionsQuery.data ?? []).map((revision) => (
-                    <div key={revision.id} className="rounded-lg border bg-white p-4">
-                      <div className="flex items-center gap-2 text-sm font-medium">
-                        <GitCommitVertical className="h-4 w-4" />
-                        {revision.diffSummary}
-                      </div>
-                      <p className="mt-2 text-xs text-muted-foreground">{new Date(revision.createdAt).toLocaleString("vi-VN")}</p>
-                      <p className="mt-3 line-clamp-4 text-sm leading-6 text-muted-foreground">{revision.newContent}</p>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            )}
-
-            <Card className={isAdmin ? "hidden" : "bg-slate-950 text-white rounded-2xl"}>
-              <CardContent className="flex min-h-[170px] flex-col justify-center px-6 py-9">
-
-                <div className="flex items-center gap-2 text-lg font-semibold">
-                  <Mail className="h-5 w-5" />
-                  <span>Mail cuối ngày</span>
-                </div>
-
-                <p className="mt-3 text-sm leading-6 text-slate-300">
-                  Nút gửi mail sẽ tạo file Word nhật ký, đính kèm vào mail
-                  và gửi tới bộ phận tuyển dụng theo cấu hình hệ thống.
-                </p>
-
-              </CardContent>
-            </Card>
-          </div>
         </div>
       )}
     </div>

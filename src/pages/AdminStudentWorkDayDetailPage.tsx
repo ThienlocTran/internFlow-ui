@@ -46,9 +46,7 @@ const imageFilters: { id: ImageFilter; label: string }[] = [
 function imageItems(attendance: AttendanceAudit): DayImage[] {
   const legacy: DayImage[] = [
     { id: "checkin-personal", attendanceId: attendance.attendanceId, shiftName: attendance.shiftName, label: "TimeMark vào ca", type: "PERSONAL", phase: "CHECKIN", url: attendance.checkinTimemarkImageUrl },
-    { id: "checkin-group", attendanceId: attendance.attendanceId, shiftName: attendance.shiftName, label: "Ảnh nhóm vào ca", type: "GROUP", phase: "CHECKIN", url: attendance.checkinGroupImageUrl },
     { id: "checkout-personal", attendanceId: attendance.attendanceId, shiftName: attendance.shiftName, label: "TimeMark tan ca", type: "PERSONAL", phase: "CHECKOUT", url: attendance.checkoutTimemarkImageUrl },
-    { id: "checkout-group", attendanceId: attendance.attendanceId, shiftName: attendance.shiftName, label: "Ảnh nhóm tan ca", type: "GROUP", phase: "CHECKOUT", url: attendance.checkoutGroupImageUrl },
   ].filter((item) => Boolean(item.url));
 
   const extra = attendance.images.map((image: AttendanceImage) => ({
