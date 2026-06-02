@@ -136,9 +136,6 @@ function attendancePreviewImages(attendance: Attendance) {
   if (attendance.checkinTimemarkImageUrl) {
     items.push({ key: `${attendance.id}-checkin-personal`, label: "TimeMark đầu ca", url: attendance.checkinTimemarkImageUrl });
   }
-  if (attendance.checkinGroupImageUrl) {
-    items.push({ key: `${attendance.id}-checkin-group`, label: "Ảnh nhóm đầu ca", url: attendance.checkinGroupImageUrl });
-  }
   attendance.images.forEach((image: AttendanceImage) => {
     items.push({
       key: image.id,
@@ -151,9 +148,6 @@ function attendancePreviewImages(attendance: Attendance) {
   });
   if (attendance.checkoutTimemarkImageUrl) {
     items.push({ key: `${attendance.id}-checkout-personal`, label: "TimeMark cuối ca", url: attendance.checkoutTimemarkImageUrl });
-  }
-  if (attendance.checkoutGroupImageUrl) {
-    items.push({ key: `${attendance.id}-checkout-group`, label: "Ảnh nhóm cuối ca", url: attendance.checkoutGroupImageUrl });
   }
   return items;
 }

@@ -127,7 +127,7 @@ async function removePreviewDrafts(keys: string[]) {
   db.close();
 }
 
-type SlotKey = "checkin-personal" | "checkin-group" | "checkout-personal" | "checkout-group" | string;
+type SlotKey = "checkin-personal" | "checkout-personal" | string;
 
 function today() {
   return toDateInputValue(new Date());
@@ -661,18 +661,12 @@ function InternAttendancePage() {
 
 
   const saveCheckoutDraftMutation = useMutation({
-    mutationFn: async ({ slotKey, file }: { slotKey: "checkout-personal" | "checkout-group"; file: File }) => {
+    mutationFn: async ({ file }: { slotKey: "checkout-personal"; file: File }) => {
       if (!currentAttendance) throw new Error("Bạn cần checkin trước khi lưu ảnh tan ca.");
       const uploaded = await uploadImage(file);
       return saveCheckoutDraft(currentAttendance.id, {
-        timemarkImageUrl:
-          slotKey === "checkout-personal"
-            ? uploaded.url
-            : currentAttendance.checkoutTimemarkImageUrl ?? "",
-        groupImageUrl:
-          slotKey === "checkout-group"
-            ? uploaded.url
-            : currentAttendance.checkoutGroupImageUrl,
+        timemarkImageUrl: uploaded.url,
+        groupImageUrl: currentAttendance.checkoutGroupImageUrl,
       });
     },
     onSuccess: () => {
