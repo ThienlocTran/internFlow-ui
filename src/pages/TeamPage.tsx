@@ -144,7 +144,7 @@ export function TeamPage() {
                     <Badge tone="warning">{leaderPolicy.targetShiftsPerWeek} ca/tuần</Badge>
                   </div>
                   <p className="mt-3 text-sm text-muted-foreground">
-                    Tối đa {leaderPolicy.maxShiftsPerDay} ca/ngày. Có thể xem sinh viên trùng ca mình đã đăng ký.
+                    Tối đa {leaderPolicy.maxShiftsPerDay} ca/ngày, hoặc 4 ca/ngày khi đăng ký bù. Có thể xem sinh viên trùng ca mình đã đăng ký.
                   </p>
                 </div>
               )}
@@ -179,7 +179,7 @@ export function TeamPage() {
                   setSelectedDate(event.target.value);
                   setSelectedStudentId(null);
                 }} />
-                <Badge tone="muted">Quota nhóm trưởng: 3 ca/ngày · 9 ca/tuần</Badge>
+                <Badge tone="muted">Quota nhóm trưởng: 3 ca/ngày · 4 ca/ngày khi đi bù</Badge>
               </div>
 
               {peersQuery.isLoading ? (

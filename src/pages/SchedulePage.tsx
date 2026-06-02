@@ -17,6 +17,7 @@ import { formatDate } from "@/utils/date-format";
 
 const dayNames = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ nhật"];
 const BUSINESS_UTC_OFFSET_MS = 7 * 60 * 60 * 1000;
+const TEAM_LEADER_MAKEUP_DAILY_LIMIT = 4;
 
 function businessNow() {
   const value = new Date(Date.now() + BUSINESS_UTC_OFFSET_MS).toISOString();
@@ -77,6 +78,15 @@ function weeksElapsed(startDate: string | undefined, targetDate: string) {
   return Math.floor(diffMs / (7 * 24 * 60 * 60 * 1000)) + 1;
 }
 
+function weeksBetween(startDate: string | undefined, targetDate: string) {
+  if (!startDate) return 0;
+  const start = new Date(`${startDate}T00:00:00`);
+  const target = new Date(`${targetDate}T00:00:00`);
+  const diffMs = target.getTime() - start.getTime();
+  if (Number.isNaN(diffMs) || diffMs <= 0) return 0;
+  return Math.floor(diffMs / (7 * 24 * 60 * 60 * 1000));
+}
+
 function getShiftGroup(shift: Shift) {
   if (shift.displayGroup) return shift.displayGroup;
   if (shift.category === "HOME_REPORT") return "Báo cáo tại nhà";
@@ -115,6 +125,24 @@ function initials(user: User) {
 
 function registrationsForDay(registrations: ScheduleRegistration[] | undefined, date: string) {
   return (registrations ?? []).filter((item) => item.scheduleDate === date && item.status === "REGISTERED");
+}
+
+function hasMakeupQuota(user: User | null | undefined, policy: RolePolicy | null, registrations: ScheduleRegistration[] | undefined, currentWeekStart: string) {
+  if (user?.role !== "TEAM_LEADER" || !policy || policy.targetShiftsPerWeek <= 0) return false;
+  const quotaStart = user.cohort?.startDate ?? currentWeekStart;
+  const actualBeforeWeek = (registrations ?? []).filter((item) =>
+    item.status === "REGISTERED" && item.scheduleDate >= quotaStart && item.scheduleDate < currentWeekStart
+  ).length;
+  const expectedBeforeWeek = weeksBetween(quotaStart, currentWeekStart) * policy.targetShiftsPerWeek;
+  return actualBeforeWeek < expectedBeforeWeek;
+}
+
+function effectiveDailyLimit(user: User | null | undefined, policy: RolePolicy | null, registrations: ScheduleRegistration[] | undefined, currentWeekStart: string) {
+  if (!policy) return 0;
+  if (hasMakeupQuota(user, policy, registrations, currentWeekStart)) {
+    return Math.max(policy.maxShiftsPerDay, TEAM_LEADER_MAKEUP_DAILY_LIMIT);
+  }
+  return policy.maxShiftsPerDay;
 }
 
 function AdminShiftCapacityPage() {
@@ -328,7 +356,7 @@ function InternSchedulePage() {
   const registeredCumulative = (cumulativeScheduleQuery.data ?? []).filter((item) => item.status === "REGISTERED").length;
   const weeklyLimit = policy?.targetShiftsPerWeek ?? 0;
   const cumulativeLimit = policy ? weeksElapsed(user?.cohort?.startDate, selectedDate) * policy.targetShiftsPerWeek : 0;
-  const dailyLimit = policy?.maxShiftsPerDay ?? 0;
+  const dailyLimit = effectiveDailyLimit(user, policy, cumulativeScheduleQuery.data, range.start);
   const remainingThisWeek = Math.max(0, weeklyLimit - registeredThisWeek);
   const remainingCumulative = Math.max(0, cumulativeLimit - registeredCumulative);
   const selectedDateIsPast = isPastDate(selectedDate);
@@ -576,7 +604,7 @@ function InternSchedulePage() {
           )}
           {selectedShiftIds.length > remainingCumulative && (
             <p className="rounded-md bg-red-50 p-3 text-sm text-red-700">
-              Quota tích lũy đến hết tuần này chỉ còn {remainingCumulative} ca có thể đăng ký. Nếu tuần trước đi ít hơn 6 ca thì tuần này sẽ được đăng ký bù.
+              Quota tích lũy đến hết tuần này chỉ còn {remainingCumulative} ca có thể đăng ký. Nếu tuần trước đi ít hơn {weeklyLimit} ca thì tuần này sẽ được đăng ký bù.
             </p>
           )}
           {selectedShiftIds.length > 0 && !isAdjacent(selectedAndRegisteredShifts) && (
@@ -666,7 +694,7 @@ function InternSchedulePage() {
           </div>
           <div className="rounded-lg border bg-slate-50 p-4">
             <p className="font-medium">Giới hạn theo vai trò</p>
-            <p className="mt-2 text-sm text-muted-foreground">Sinh viên thường tối đa 2 ca/ngày, nhóm trưởng tối đa 3 ca/ngày.</p>
+            <p className="mt-2 text-sm text-muted-foreground">Sinh viên thường tối đa 2 ca/ngày, nhóm trưởng tối đa 3 ca/ngày hoặc 4 ca/ngày khi đăng ký bù.</p>
           </div>
           <div className="rounded-lg border bg-slate-50 p-4">
             <p className="font-medium">Ca đủ chỗ sẽ khóa</p>

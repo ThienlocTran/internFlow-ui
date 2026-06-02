@@ -56,7 +56,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const policyText = isAdmin
     ? "Quản lý người dùng, ca, sức chứa, báo cáo và kiểm tra điểm danh."
     : isLeader
-      ? "Nhóm trưởng là sinh viên thực tập: tối đa 3 ca/ngày, 9 ca/tuần và quản lý các bạn trùng ca."
+      ? "Nhóm trưởng là sinh viên thực tập: tối đa 3 ca/ngày, 4 ca/ngày khi đăng ký bù và quản lý các bạn trùng ca."
       : "Sinh viên thường 6 buổi/tuần. Đủ 6 ca tối sẽ được cộng 1 ca bonus.";
 
   return (
