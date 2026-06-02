@@ -5,6 +5,7 @@ import {
   CalendarDays,
   CheckCircle2,
   FileText,
+  GitCommitVertical,
   Loader2,
   Mail,
   Search,
@@ -22,6 +23,7 @@ import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import {
   getDailyReportEntries,
   getReportProgress,
+  getReportRevisions,
   saveReportEntry,
   submitDailyReportMail,
 } from "@/services/report-journal.service";
@@ -311,6 +313,13 @@ export function JournalPage() {
   }, [currentUser, isAdmin, selectedDailyEntry]);
 
   const currentEntry = progressQuery.data?.entries.find((entry) => entry.workDate === workDate);
+  const entries = progressQuery.data?.entries ?? [];
+  const selectedEntryId = currentEntry?.id ?? null;
+  const revisionsQuery = useQuery({
+    queryKey: ["report-revisions", selectedEntryId],
+    queryFn: () => getReportRevisions(selectedEntryId!),
+    enabled: Boolean(selectedEntryId),
+  });
   const draftWordCount = countWords(content);
   // Page count: prefer Word file metadata, else estimate from text
   const draftPageCount = wordFilePage !== null ? wordFilePage : estimatePageCount(content);
@@ -326,6 +335,11 @@ export function JournalPage() {
 
   // ── localStorage persistence ─────────────────────────────────────────────────
   const canEdit = !isAdmin && Boolean(currentUser?.id);
+  const loadEntry = useCallback((entry: ReportEntry) => {
+    setWorkDate(entry.workDate);
+    setContent(entry.content ?? "");
+    setReferenceLinks(entry.referenceLinks ?? "");
+  }, []);
 
   // ── Mutations — declared here so they can be referenced in useEffect below ──
 

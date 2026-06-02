@@ -169,14 +169,6 @@ export type TeamMemberFullDetail = {
   reportEntries: DailyReportEntry[];
 };
 
-export type TeamMemberFullDetail = {
-  user: User;
-  date: string;
-  scheduleRegistrations: ScheduleRegistration[];
-  attendances: Attendance[];
-  reportEntries: DailyReportEntry[];
-};
-
 export type AttendanceAudit = {
   attendanceId: string;
   shiftName: string;
