@@ -6,6 +6,7 @@ export type SaveReportEntryPayload = {
   workDate: string;
   content: string;
   referenceLinks?: string;
+  sourceReferences?: string;
 };
 
 export function getReportProgress(userId: string) {

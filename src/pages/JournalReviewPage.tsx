@@ -23,6 +23,7 @@ type ReviewPayload = {
   workDate: string;
   content: string;
   referenceLinks: string;
+  sourceReferences?: string;
   attachmentName: string;
   uploadedWordDocument?: UploadedWordDocument | null;
   shiftSummary: string;
@@ -288,6 +289,12 @@ export function JournalReviewPage() {
             <div className="rounded-xl border bg-slate-50 p-4">
               <p className="text-sm font-medium">Tài liệu tham khảo</p>
               <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{payload.referenceLinks.trim()}</p>
+            </div>
+          )}
+          {payload.sourceReferences?.trim() && (
+            <div className="rounded-xl border bg-slate-50 p-4">
+              <p className="text-sm font-medium">Nguon trich dan</p>
+              <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{payload.sourceReferences.trim()}</p>
             </div>
           )}
         </CardContent>

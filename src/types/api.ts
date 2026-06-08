@@ -263,6 +263,7 @@ export type ReportEntry = {
   workTimeSummary?: string;
   content?: string;
   referenceLinks?: string;
+  sourceReferences?: string;
   pageCount: number;
   requiredPages: number;
   status: ReportEntryStatus;

@@ -50,15 +50,15 @@ function draftKey(userId: string, workDate: string) {
   return `${STORAGE_KEY_PREFIX}:${userId}:${workDate}`;
 }
 
-function saveDraft(userId: string, workDate: string, content: string, referenceLinks: string) {
+function saveDraft(userId: string, workDate: string, content: string, referenceLinks: string, sourceReferences: string) {
   try {
-    localStorage.setItem(draftKey(userId, workDate), JSON.stringify({ content, referenceLinks }));
+    localStorage.setItem(draftKey(userId, workDate), JSON.stringify({ content, referenceLinks, sourceReferences }));
   } catch {
     // quota exceeded — ignore
   }
 }
 
-function loadDraft(userId: string, workDate: string): { content: string; referenceLinks: string } | null {
+function loadDraft(userId: string, workDate: string): { content: string; referenceLinks: string; sourceReferences?: string } | null {
   try {
     const raw = localStorage.getItem(draftKey(userId, workDate));
     if (!raw) return null;
@@ -268,6 +268,7 @@ export function JournalPage() {
   const [selectedDailyEntry, setSelectedDailyEntry] = useState<DailyReportEntry | null>(null);
   const [content, setContent] = useState("");
   const [referenceLinks, setReferenceLinks] = useState("");
+  const [sourceReferences, setSourceReferences] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [wordUpload, setWordUpload] = useState<WordUploadState>({ status: "idle" });
   const [uploadedWordDocument, setUploadedWordDocument] = useState<UploadedWordDocument | null>(null);
@@ -336,6 +337,7 @@ export function JournalPage() {
         workDate,
         content,
         referenceLinks,
+        sourceReferences,
       }),
     onSuccess: (entry) => {
       setNotice(
@@ -361,10 +363,12 @@ export function JournalPage() {
     }
     const normalizedContent = content.trim();
     const normalizedReferenceLinks = referenceLinks.trim();
+    const normalizedSourceReferences = sourceReferences.trim();
     const needsSave =
       !currentEntry ||
       (currentEntry.content ?? "").trim() !== normalizedContent ||
       (currentEntry.referenceLinks ?? "").trim() !== normalizedReferenceLinks ||
+      (currentEntry.sourceReferences ?? "").trim() !== normalizedSourceReferences ||
       currentEntry.pageCount !== draftPageCount;
 
     let entryForMail = currentEntry;
@@ -375,6 +379,7 @@ export function JournalPage() {
         workDate,
         content,
         referenceLinks,
+        sourceReferences,
       });
       queryClient.invalidateQueries({ queryKey: ["report-progress", currentUser.id] });
       if (currentUser?.id) clearDraft(currentUser.id, workDate);
@@ -390,6 +395,7 @@ export function JournalPage() {
         workDate,
         content,
         referenceLinks,
+        sourceReferences,
         attachmentName: reviewAttachmentName,
         uploadedWordDocument,
         shiftSummary: reviewShiftSummary,
@@ -496,6 +502,7 @@ export function JournalPage() {
     setSelectedUserId(item.document.user.id);
     setContent(item.entry.content ?? "");
     setReferenceLinks(item.entry.referenceLinks ?? "");
+    setSourceReferences(item.entry.sourceReferences ?? "");
     setUploadedWordDocument(null);
     setIsReviewOpen(false);
     setWordFilePage(null);
@@ -513,6 +520,7 @@ export function JournalPage() {
     if (currentEntry) {
       setContent(currentEntry.content ?? "");
       setReferenceLinks(currentEntry.referenceLinks ?? "");
+      setSourceReferences(currentEntry.sourceReferences ?? "");
       return;
     }
 
@@ -521,9 +529,11 @@ export function JournalPage() {
     if (draft) {
       setContent(draft.content);
       setReferenceLinks(draft.referenceLinks);
+      setSourceReferences(draft.sourceReferences ?? "");
     } else {
       setContent("");
       setReferenceLinks("");
+      setSourceReferences("");
     }
     setUploadedWordDocument(null);
     setIsReviewOpen(false);
@@ -531,19 +541,19 @@ export function JournalPage() {
     setWordUpload({ status: "idle" });
   }, [workDate, currentUser?.id, canEdit, currentEntry]);
 
-  // Auto-save draft to localStorage when content/referenceLinks change
+  // Auto-save draft to localStorage when journal fields change
   useEffect(() => {
     if (!canEdit || !currentUser?.id) return;
     
     // Debounce: save after 1 second of no typing
     const timeoutId = setTimeout(() => {
-      if (content || referenceLinks) {
-        saveDraft(currentUser.id, workDate, content, referenceLinks);
+      if (content || referenceLinks || sourceReferences) {
+        saveDraft(currentUser.id, workDate, content, referenceLinks, sourceReferences);
       }
     }, 1000);
 
     return () => clearTimeout(timeoutId);
-  }, [content, referenceLinks, workDate, currentUser?.id, canEdit]);
+  }, [content, referenceLinks, sourceReferences, workDate, currentUser?.id, canEdit]);
 
   if (!currentUser) return <ErrorState message="Bạn cần đăng nhập để xem nhật ký thực tập." />;
 
@@ -739,6 +749,12 @@ export function JournalPage() {
                           <p className="mt-2 text-sm text-muted-foreground whitespace-pre-wrap">{referenceLinks.trim()}</p>
                         </>
                       )}
+                      {sourceReferences.trim() && (
+                        <>
+                          <p className="mt-4 text-sm font-medium">{"Ngu\u1ed3n tr\u00edch d\u1eabn"}</p>
+                          <p className="mt-2 text-sm text-muted-foreground whitespace-pre-wrap">{sourceReferences.trim()}</p>
+                        </>
+                      )}
                     </div>
 
                     <div className="space-y-4">
@@ -800,6 +816,12 @@ export function JournalPage() {
                         <>
                           <p className="mt-4 text-sm font-medium">{"T\u00e0i li\u1ec7u tham kh\u1ea3o"}</p>
                           <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{referenceLinks.trim()}</p>
+                        </>
+                      )}
+                      {sourceReferences.trim() && (
+                        <>
+                          <p className="mt-4 text-sm font-medium">{"Ngu\u1ed3n tr\u00edch d\u1eabn"}</p>
+                          <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{sourceReferences.trim()}</p>
                         </>
                       )}
                     </div>
@@ -1010,6 +1032,13 @@ export function JournalPage() {
                     placeholder="Tài liệu tham khảo, link, sách, bài báo cáo cũ..."
                     value={referenceLinks}
                     onChange={(event) => setReferenceLinks(event.target.value)}
+                  />
+
+                  <textarea
+                    className="min-h-24 w-full rounded-lg border bg-white p-4 text-sm leading-6 outline-none focus:border-slate-400"
+                    placeholder="Nguon trich dan: ten bai viet, link, nguoi/nhom cung cap thong tin..."
+                    value={sourceReferences}
+                    onChange={(event) => setSourceReferences(event.target.value)}
                   />
 
                   {/* Draft persistence notice */}
