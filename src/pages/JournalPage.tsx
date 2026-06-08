@@ -4,10 +4,9 @@ import {
   BookOpenText,
   CalendarDays,
   CheckCircle2,
+  Download,
   FileText,
-  GitCommitVertical,
   Loader2,
-  Mail,
   Search,
   Upload,
   X,
@@ -21,11 +20,11 @@ import { Input } from "@/components/ui/input";
 import { ErrorState } from "@/components/common/ErrorState";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import {
+  downloadReportWord,
   getDailyReportEntries,
   getReportProgress,
-  getReportRevisions,
   saveReportEntry,
-  submitDailyReportMail,
+  uploadReportWord,
 } from "@/services/report-journal.service";
 import { getAttendances } from "@/services/attendance.service";
 import { getUserSchedule } from "@/services/schedule.service";
@@ -35,7 +34,6 @@ import type { Attendance, AttendanceImage, DailyReportEntry, ReportEntry, Shift,
 import { fallbackToFullImage, getFullImageUrl, getImageDisplayUrl } from "@/utils/cloudinary-image";
 import { readDocx } from "@/utils/docx-reader";
 
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
 const JOURNAL_REVIEW_STORAGE_KEY = "journal_review_payload";
 
 /**
@@ -52,15 +50,15 @@ function draftKey(userId: string, workDate: string) {
   return `${STORAGE_KEY_PREFIX}:${userId}:${workDate}`;
 }
 
-function saveDraft(userId: string, workDate: string, content: string, referenceLinks: string) {
+function saveDraft(userId: string, workDate: string, content: string, referenceLinks: string, sourceReferences: string) {
   try {
-    localStorage.setItem(draftKey(userId, workDate), JSON.stringify({ content, referenceLinks }));
+    localStorage.setItem(draftKey(userId, workDate), JSON.stringify({ content, referenceLinks, sourceReferences }));
   } catch {
     // quota exceeded — ignore
   }
 }
 
-function loadDraft(userId: string, workDate: string): { content: string; referenceLinks: string } | null {
+function loadDraft(userId: string, workDate: string): { content: string; referenceLinks: string; sourceReferences?: string } | null {
   try {
     const raw = localStorage.getItem(draftKey(userId, workDate));
     if (!raw) return null;
@@ -110,34 +108,16 @@ function resolveUploadedWordPageCount(pageCount: number | null, wordCount: numbe
   return Math.max(pageCount, estimatedFromWords);
 }
 
-function fileToBase64(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result;
-      if (typeof result !== "string") {
-        reject(new Error("Không thể đọc file Word."));
-        return;
-      }
-      const base64 = result.split(",")[1];
-      if (!base64) {
-        reject(new Error("File Word không hợp lệ."));
-        return;
-      }
-      resolve(base64);
-    };
-    reader.onerror = () => reject(new Error("Không thể đọc file Word."));
-    reader.readAsDataURL(file);
-  });
-}
 
+function withDocxExtension(fileName: string | null | undefined) {
+  const normalized = fileName?.trim();
+  if (!normalized) return "Nhat ky thuc tap.docx";
+  return normalized.toLowerCase().endsWith(".docx") ? normalized : `${normalized}.docx`;
+}
 function attendancePreviewImages(attendance: Attendance) {
   const items: Array<{ key: string; label: string; url: string; thumbnailUrl?: string }> = [];
   if (attendance.checkinTimemarkImageUrl) {
     items.push({ key: `${attendance.id}-checkin-personal`, label: "TimeMark đầu ca", url: attendance.checkinTimemarkImageUrl });
-  }
-  if (attendance.checkinGroupImageUrl) {
-    items.push({ key: `${attendance.id}-checkin-group`, label: "Ảnh nhóm đầu ca", url: attendance.checkinGroupImageUrl });
   }
   attendance.images.forEach((image: AttendanceImage) => {
     items.push({
@@ -151,9 +131,6 @@ function attendancePreviewImages(attendance: Attendance) {
   });
   if (attendance.checkoutTimemarkImageUrl) {
     items.push({ key: `${attendance.id}-checkout-personal`, label: "TimeMark cuối ca", url: attendance.checkoutTimemarkImageUrl });
-  }
-  if (attendance.checkoutGroupImageUrl) {
-    items.push({ key: `${attendance.id}-checkout-group`, label: "Ảnh nhóm cuối ca", url: attendance.checkoutGroupImageUrl });
   }
   return items;
 }
@@ -214,44 +191,6 @@ function buildTimeSummary(
   }
   return registered.map((item) => `${item.shift.startTime.slice(0, 5)} - ${item.shift.endTime.slice(0, 5)}`).join(" \u00b7 ");
 }
-function loadGoogleScript() {
-  return new Promise<void>((resolve, reject) => {
-    if ((window as any).google?.accounts?.oauth2) { resolve(); return; }
-    const existingScript = document.querySelector<HTMLScriptElement>('script[src="https://accounts.google.com/gsi/client"]');
-    if (existingScript) {
-      existingScript.addEventListener("load", () => resolve(), { once: true });
-      existingScript.addEventListener("error", () => reject(new Error("Không tải được Google OAuth.")), { once: true });
-      return;
-    }
-    const script = document.createElement("script");
-    script.src = "https://accounts.google.com/gsi/client";
-    script.async = true;
-    script.defer = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Không tải được Google OAuth."));
-    document.head.appendChild(script);
-  });
-}
-
-async function requestGmailSendToken() {
-  if (!GOOGLE_CLIENT_ID) throw new Error("Chưa cấu hình VITE_GOOGLE_CLIENT_ID.");
-  await loadGoogleScript();
-  return new Promise<string>((resolve, reject) => {
-    const tokenClient = (window as any).google?.accounts.oauth2?.initTokenClient({
-      client_id: GOOGLE_CLIENT_ID,
-      scope: "https://www.googleapis.com/auth/gmail.send openid email profile",
-      prompt: "consent",
-      callback: (response: { access_token?: string; error?: string }) => {
-        if (response.error || !response.access_token) {
-          reject(new Error("Bạn cần cấp quyền Gmail để gửi mail bằng chính tài khoản của mình."));
-          return;
-        }
-        resolve(response.access_token);
-      },
-    });
-    tokenClient?.requestAccessToken();
-  });
-}
 
 // ─── Word upload status ────────────────────────────────────────────────────────
 type WordUploadState =
@@ -276,11 +215,10 @@ export function JournalPage() {
   const [selectedDailyEntry, setSelectedDailyEntry] = useState<DailyReportEntry | null>(null);
   const [content, setContent] = useState("");
   const [referenceLinks, setReferenceLinks] = useState("");
-  const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
+  const [sourceReferences, setSourceReferences] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [wordUpload, setWordUpload] = useState<WordUploadState>({ status: "idle" });
   const [uploadedWordDocument, setUploadedWordDocument] = useState<UploadedWordDocument | null>(null);
-  const [isReviewOpen, setIsReviewOpen] = useState(false);
   // When a Word file is uploaded and contains page metadata, use that count;
   // otherwise fall back to text-based estimation.
   const [wordFilePage, setWordFilePage] = useState<number | null>(null);
@@ -314,12 +252,6 @@ export function JournalPage() {
     queryFn: () => getAttendances(currentUser!.id, workDate),
     enabled: canUseStudentEditor(currentUser?.role) && Boolean(currentUser?.id) && Boolean(workDate),
   });
-  const revisionsQuery = useQuery({
-    queryKey: ["report-revisions", selectedEntryId],
-    queryFn: () => getReportRevisions(selectedEntryId!),
-    enabled: Boolean(selectedEntryId),
-  });
-
   const targetUser = useMemo(() => {
     if (!isAdmin) return currentUser;
     return selectedDailyEntry?.document.user;
@@ -335,7 +267,8 @@ export function JournalPage() {
   const requiredWords = requiredPages * WORDS_PER_PAGE_ESTIMATE;
   const pageMarks = Array.from({ length: Math.max(requiredPages, draftPageCount, 1) }, (_, index) => index + 1);
   const reviewAttendances = attendancesQuery.data ?? [];
-  const reviewAttachmentName = uploadedWordDocument?.name ?? `${progressQuery.data?.document.currentFileName ?? "Nhat ky thuc tap"}.docx`;
+  const storedWordFileName = wordUpload.status === "done" ? wordUpload.fileName : undefined;
+  const reviewAttachmentName = storedWordFileName ?? withDocxExtension(progressQuery.data?.document.currentFileName);
   const reviewShiftSummary = buildShiftSummary(dayScheduleQuery.data, currentEntry?.shiftCodes);
   const reviewTimeSummary = buildTimeSummary(dayScheduleQuery.data, currentEntry?.workTimeSummary);
 
@@ -351,6 +284,7 @@ export function JournalPage() {
         workDate,
         content,
         referenceLinks,
+        sourceReferences,
       }),
     onSuccess: (entry) => {
       setNotice(
@@ -359,7 +293,6 @@ export function JournalPage() {
           : "Đã lưu nhật ký, nhưng vẫn chưa đủ số trang yêu cầu.",
       );
       queryClient.invalidateQueries({ queryKey: ["report-progress", currentUser?.id] });
-      setSelectedEntryId(entry.id);
       // Clear localStorage draft after successful server save
       if (currentUser?.id) clearDraft(currentUser.id, workDate);
     },
@@ -377,10 +310,12 @@ export function JournalPage() {
     }
     const normalizedContent = content.trim();
     const normalizedReferenceLinks = referenceLinks.trim();
+    const normalizedSourceReferences = sourceReferences.trim();
     const needsSave =
       !currentEntry ||
       (currentEntry.content ?? "").trim() !== normalizedContent ||
       (currentEntry.referenceLinks ?? "").trim() !== normalizedReferenceLinks ||
+      (currentEntry.sourceReferences ?? "").trim() !== normalizedSourceReferences ||
       currentEntry.pageCount !== draftPageCount;
 
     let entryForMail = currentEntry;
@@ -391,8 +326,8 @@ export function JournalPage() {
         workDate,
         content,
         referenceLinks,
+        sourceReferences,
       });
-      setSelectedEntryId(entryForMail.id);
       queryClient.invalidateQueries({ queryKey: ["report-progress", currentUser.id] });
       if (currentUser?.id) clearDraft(currentUser.id, workDate);
     }
@@ -407,7 +342,9 @@ export function JournalPage() {
         workDate,
         content,
         referenceLinks,
+        sourceReferences,
         attachmentName: reviewAttachmentName,
+        storedWordFileName,
         uploadedWordDocument,
         shiftSummary: reviewShiftSummary,
         timeSummary: reviewTimeSummary,
@@ -429,7 +366,6 @@ export function JournalPage() {
     },
     onSuccess: () => {
       persistReviewPayload();
-      setIsReviewOpen(false);
       navigate("/journal/review");
       setNotice("Đã chuẩn bị xong bản review. Kiểm tra lại nội dung và ảnh rồi bấm gửi.");
     },
@@ -438,46 +374,39 @@ export function JournalPage() {
     },
   });
 
-  const submitMailMutation = useMutation({
-    mutationFn: async () => {
-      if (!currentUser?.id) throw new Error("Bạn cần đăng nhập trước khi gửi mail cuối ngày.");
-      await ensureEntryReadyForReview();
-      const gmailToken = await requestGmailSendToken();
-      return submitDailyReportMail(currentUser.id, workDate, gmailToken, uploadedWordDocument);
-    },
-    onSuccess: (result) => {
-      setIsReviewOpen(false);
-      setNotice(`Đã gửi mail tới ${result.to}, CC ${result.cc}. File đính kèm: ${result.attachmentName}`);
-      queryClient.invalidateQueries({ queryKey: ["report-progress", currentUser?.id] });
-      queryClient.invalidateQueries({ queryKey: ["report-journals-daily", workDate] });
-    },
-    onError: (error) => {
-      setNotice(error instanceof Error ? error.message : "Không thể gửi mail cuối ngày.");
-    },
-  });
 
   // ── Word file upload handler ─────────────────────────────────────────────────
   const handleWordFile = useCallback(async (file: File) => {
+    if (!currentUser?.id) {
+      setWordUpload({ status: "error", message: "Ban can dang nhap truoc khi upload Word." });
+      return;
+    }
     if (!file.name.toLowerCase().endsWith(".docx")) {
       setWordUpload({ status: "error", message: "Chỉ hỗ trợ định dạng .docx. Vui lòng lưu file Word dưới dạng .docx rồi thử lại." });
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setWordUpload({ status: "error", message: "File Word vuot qua gioi han 10MB." });
       return;
     }
     setWordUpload({ status: "loading" });
     try {
       const info = await readDocx(file);
-      const base64 = await fileToBase64(file);
+      const uploaded = await uploadReportWord(currentUser.id, workDate, file);
       const resolvedPageCount = resolveUploadedWordPageCount(info.pageCount, info.wordCount);
       setWordUpload({
         status: "done",
-        fileName: file.name,
-        pageCount: resolvedPageCount,
-        wordCount: info.wordCount,
+        fileName: uploaded.fileName,
+        pageCount: uploaded.pageCount || resolvedPageCount,
+        wordCount: uploaded.wordCount || info.wordCount,
       });
-      setUploadedWordDocument({ name: file.name, base64 });
+      setUploadedWordDocument(null);
       // Populate textarea with extracted text (if any)
-      if (info.text) setContent(info.text);
+      setContent(uploaded.entry.content ?? info.text ?? "");
       // Guard against stale DOCX metadata by comparing it with the 210-words/page estimate.
-      setWordFilePage(resolvedPageCount);
+      setWordFilePage(uploaded.pageCount || resolvedPageCount);
+      queryClient.invalidateQueries({ queryKey: ["report-progress", currentUser.id] });
+      setNotice("Da upload va luu file Word goc cho nhat ky ngay nay.");
     } catch (err) {
       setWordUpload({
         status: "error",
@@ -485,7 +414,7 @@ export function JournalPage() {
       });
       setUploadedWordDocument(null);
     }
-  }, []);
+  }, [currentUser?.id, queryClient, workDate]);
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -500,6 +429,21 @@ export function JournalPage() {
     if (file) handleWordFile(file);
   };
 
+  const handleDownloadWord = async () => {
+    if (!currentUser?.id) return;
+    try {
+      const { blob, fileName } = await downloadReportWord(currentUser.id, workDate);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Khong the tai file Word.");
+    }
+  };
+
   const clearWordFile = () => {
     setWordUpload({ status: "idle" });
     setUploadedWordDocument(null);
@@ -508,34 +452,25 @@ export function JournalPage() {
   };
 
   // ── Entry navigation helpers ─────────────────────────────────────────────────
-  const loadEntry = (entry: ReportEntry) => {
-    setWorkDate(entry.workDate);
-    setContent(entry.content ?? "");
-    setReferenceLinks(entry.referenceLinks ?? "");
-    setSelectedEntryId(entry.id);
-    setUploadedWordDocument(null);
-    setIsReviewOpen(false);
-    setWordFilePage(null);
-    setWordUpload({ status: "idle" });
-    setNotice(null);
-  };
-
   const openDailyEntry = (item: DailyReportEntry) => {
     setSelectedDailyEntry(item);
     setSelectedUserId(item.document.user.id);
     setContent(item.entry.content ?? "");
     setReferenceLinks(item.entry.referenceLinks ?? "");
-    setSelectedEntryId(item.entry.id);
+    setSourceReferences(item.entry.sourceReferences ?? "");
     setUploadedWordDocument(null);
-    setIsReviewOpen(false);
     setWordFilePage(null);
     setWordUpload({ status: "idle" });
     setNotice(null);
   };
 
-  const entries = progressQuery.data?.entries ?? [];
 
   // ── localStorage draft persistence ──────────────────────────────────────────
+  useEffect(() => {
+    setUploadedWordDocument(null);
+    setWordFilePage(null);
+    setWordUpload({ status: "idle" });
+  }, [currentUser?.id, workDate]);
   // Load draft when workDate changes (for student editor only)
   useEffect(() => {
     if (!canEdit || !currentUser?.id) return;
@@ -544,37 +479,35 @@ export function JournalPage() {
     if (currentEntry) {
       setContent(currentEntry.content ?? "");
       setReferenceLinks(currentEntry.referenceLinks ?? "");
+      setSourceReferences(currentEntry.sourceReferences ?? "");
       return;
     }
-
     // Otherwise load draft from localStorage
     const draft = loadDraft(currentUser.id, workDate);
     if (draft) {
       setContent(draft.content);
       setReferenceLinks(draft.referenceLinks);
+      setSourceReferences(draft.sourceReferences ?? "");
     } else {
       setContent("");
       setReferenceLinks("");
+      setSourceReferences("");
     }
-    setUploadedWordDocument(null);
-    setIsReviewOpen(false);
-    setWordFilePage(null);
-    setWordUpload({ status: "idle" });
   }, [workDate, currentUser?.id, canEdit, currentEntry]);
 
-  // Auto-save draft to localStorage when content/referenceLinks change
+  // Auto-save draft to localStorage when journal fields change
   useEffect(() => {
     if (!canEdit || !currentUser?.id) return;
     
     // Debounce: save after 1 second of no typing
     const timeoutId = setTimeout(() => {
-      if (content || referenceLinks) {
-        saveDraft(currentUser.id, workDate, content, referenceLinks);
+      if (content || referenceLinks || sourceReferences) {
+        saveDraft(currentUser.id, workDate, content, referenceLinks, sourceReferences);
       }
     }, 1000);
 
     return () => clearTimeout(timeoutId);
-  }, [content, referenceLinks, workDate, currentUser?.id, canEdit]);
+  }, [content, referenceLinks, sourceReferences, workDate, currentUser?.id, canEdit]);
 
   if (!currentUser) return <ErrorState message="Bạn cần đăng nhập để xem nhật ký thực tập." />;
 
@@ -613,8 +546,7 @@ export function JournalPage() {
                     setWorkDate(event.target.value);
                     setSelectedDailyEntry(null);
                     setSelectedUserId("");
-                    setSelectedEntryId(null);
-                  }}
+                                  }}
                 />
               </div>
             </div>
@@ -695,8 +627,7 @@ export function JournalPage() {
                 value={selectedUserId}
                 onChange={(event) => {
                   setSelectedUserId(event.target.value);
-                  setSelectedEntryId(null);
-                }}
+                              }}
               >
                 <option value="">Chọn sinh viên</option>
                 {(usersQuery.data ?? []).filter((user) => user.role === "INTERN").map((user) => (
@@ -717,145 +648,6 @@ export function JournalPage() {
 
       {progressQuery.data && (
         <div className="space-y-6">
-          <div className="space-y-6">
-            {/* Document summary card ──────────────────────────────────── */}
-          {canEdit && isReviewOpen && (<div className="space-y-6">
-                <Card className="bg-white/95 shadow-sm ring-1 ring-slate-200">
-                  <CardHeader>
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <CardTitle>{"Review Mail Cu\u1ed1i Ng\u00e0y"}</CardTitle>
-                        <CardDescription>{"Ki\u1ec3m tra l\u1ea1i th\u00f4ng tin sinh vi\u00ean, \u1ea3nh trong ca v\u00e0 file \u0111\u00ednh k\u00e8m tr\u01b0\u1edbc khi g\u1eedi."}</CardDescription>
-                      </div>
-                      <Badge tone="muted">{uploadedWordDocument ? "D\u00f9ng file Word \u0111\u00e3 t\u1ea3i l\u00ean" : "H\u1ec7 th\u1ed1ng s\u1ebd \u0111\u00f3ng g\u00f3i th\u00e0nh file Word"}</Badge>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-6">
-                    {notice && <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-700">{notice}</p>}
-                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                      <div className="rounded-lg border bg-slate-50 p-4">
-                        <p className="text-sm text-muted-foreground">{"H\u1ecd t\u00ean"}</p>
-                        <p className="mt-2 font-medium">{currentUser?.fullName || "Ch\u01b0a c\u00f3"}</p>
-                      </div>
-                      <div className="rounded-lg border bg-slate-50 p-4">
-                        <p className="text-sm text-muted-foreground">MSSV</p>
-                        <p className="mt-2 font-medium">{currentUser?.studentCode || "Ch\u01b0a c\u00f3"}</p>
-                      </div>
-                      <div className="rounded-lg border bg-slate-50 p-4">
-                        <p className="text-sm text-muted-foreground">{"L\u1edbp / Tr\u01b0\u1eddng"}</p>
-                        <p className="mt-2 font-medium">{currentUser?.studentClass || "Ch\u01b0a c\u00f3"}{currentUser?.school ? ` \u00b7 ${currentUser.school}` : ""}</p>
-                      </div>
-                      <div className="rounded-lg border bg-slate-50 p-4">
-                        <p className="text-sm text-muted-foreground">{"Ngu\u1ed3n file"}</p>
-                        <p className="mt-2 break-words font-medium">{reviewAttachmentName}</p>
-                      </div>
-                      <div className="rounded-lg border bg-slate-50 p-4">
-                        <p className="text-sm text-muted-foreground">{"Ng\u00e0y"}</p>
-                        <p className="mt-2 font-medium">{formatDisplayDate(workDate)}</p>
-                      </div>
-                      <div className="rounded-lg border bg-slate-50 p-4">
-                        <p className="text-sm text-muted-foreground">{"Ca l\u00e0m"}</p>
-                        <p className="mt-2 font-medium">{reviewShiftSummary}</p>
-                      </div>
-                      <div className="rounded-lg border bg-slate-50 p-4">
-                        <p className="text-sm text-muted-foreground">{"Th\u1eddi gian"}</p>
-                        <p className="mt-2 font-medium">{reviewTimeSummary}</p>
-                      </div>
-                    </div>
-
-                    <div className="rounded-xl border bg-slate-50 p-4">
-                      <p className="text-sm font-medium">{"T\u00f3m t\u1eaft nh\u1eadt k\u00fd"}</p>
-                      <p className="mt-2 text-sm text-muted-foreground whitespace-pre-wrap">{content.trim() || "Ch\u01b0a c\u00f3 n\u1ed9i dung"}</p>
-                      {referenceLinks.trim() && (
-                        <>
-                          <p className="mt-4 text-sm font-medium">{"T\u00e0i li\u1ec7u tham kh\u1ea3o"}</p>
-                          <p className="mt-2 text-sm text-muted-foreground whitespace-pre-wrap">{referenceLinks.trim()}</p>
-                        </>
-                      )}
-                    </div>
-
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-sm font-medium">{"\u1ea2nh \u0111i\u1ec3m danh t\u1eeb \u0111\u1ea7u \u0111\u1ebfn cu\u1ed1i ca"}</p>
-                        <Badge tone="muted">{reviewAttendances.length} ca</Badge>
-                      </div>
-                      {reviewAttendances.length > 0 ? reviewAttendances.map((attendance) => {
-                        const previewImages = attendancePreviewImages(attendance);
-                        return (
-                          <div key={attendance.id} className="rounded-xl border p-4">
-                            <div className="flex flex-wrap items-center justify-between gap-3">
-                              <div>
-                                <p className="font-medium">{attendance.shift.name}</p>
-                                <p className="mt-1 text-sm text-muted-foreground">{attendance.shift.startTime.slice(0, 5)} - {attendance.shift.endTime.slice(0, 5)}</p>
-                              </div>
-                              <Badge tone="muted">{attendance.status}</Badge>
-                            </div>
-                            {previewImages.length > 0 ? (
-                              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                                {previewImages.map((image) => {
-                                  const fullUrl = getFullImageUrl(image);
-                                  const displayUrl = getImageDisplayUrl(image);
-                                  if (!fullUrl || !displayUrl) return null;
-                                  return (
-                                  <a key={image.key} href={fullUrl} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-lg border bg-white">
-                                    <img
-                                      src={displayUrl}
-                                      alt={image.label}
-                                      loading="lazy"
-                                      onError={(event) => fallbackToFullImage(event, fullUrl)}
-                                      className="h-40 w-full object-cover"
-                                    />
-                                    <div className="p-3">
-                                      <p className="text-sm font-medium">{image.label}</p>
-                                    </div>
-                                  </a>
-                                  );
-                                })}
-                              </div>
-                            ) : (
-                              <p className="mt-3 text-sm text-muted-foreground">{"Ch\u01b0a c\u00f3 \u1ea3nh n\u00e0o cho ca n\u00e0y."}</p>
-                            )}
-                          </div>
-                        );
-                      }) : (
-                        <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
-                          {"Ch\u01b0a t\u1ea3i \u0111\u01b0\u1ee3c d\u1eef li\u1ec7u \u1ea3nh \u0111i\u1ec3m danh cho ng\u00e0y n\u00e0y."}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="rounded-xl border bg-slate-50 p-4">
-                      <p className="text-sm font-medium">{"File nh\u1eadt k\u00fd s\u1ebd g\u1eedi"}</p>
-                      <p className="mt-2 break-words text-sm text-muted-foreground">{reviewAttachmentName}</p>
-                      <p className="mt-4 text-sm font-medium">{"N\u1ed9i dung nh\u1eadt k\u00fd"}</p>
-                      <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{content.trim() || "Ch\u01b0a c\u00f3 n\u1ed9i dung"}</p>
-                      {referenceLinks.trim() && (
-                        <>
-                          <p className="mt-4 text-sm font-medium">{"T\u00e0i li\u1ec7u tham kh\u1ea3o"}</p>
-                          <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{referenceLinks.trim()}</p>
-                        </>
-                      )}
-                    </div>
-
-                    <div className="flex flex-wrap gap-3">
-                      <Button type="button" variant="outline" className="bg-white" onClick={() => setIsReviewOpen(false)}>
-                        {"\u0110\u00f3ng review"}
-                      </Button>
-                      <Button
-                        type="button"
-                        disabled={submitMailMutation.isPending || prepareReviewMutation.isPending}
-                        onClick={() => submitMailMutation.mutate()}
-                      >
-                        {submitMailMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
-                        {"X\u00e1c nh\u1eadn g\u1eedi mail"}
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-            )}
-          </div>
-
             <Card className="bg-white/90">
               <CardHeader>
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -884,73 +676,6 @@ export function JournalPage() {
               </CardContent>
             </Card>
 
-            <div className="hidden gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
-              <Card className="bg-white/90">
-                <CardHeader>
-                  <CardTitle>{"Timeline b\u00e0i vi\u1ebft"}</CardTitle>
-                  <CardDescription>{"B\u1ea5m t\u1eebng ng\u00e0y \u0111\u1ec3 xem n\u1ed9i dung v\u00e0 l\u1ecbch s\u1eed s\u1eeda."}</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {entries.length > 0 ? entries.map((entry) => (
-                    <button
-                      key={entry.id}
-                      type="button"
-                      className="w-full rounded-lg border bg-white p-4 text-left transition hover:bg-slate-50"
-                      onClick={() => loadEntry(entry)}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="font-medium">{entry.workDate}</p>
-                          <p className="mt-1 text-sm text-muted-foreground">{entry.shiftCodes || "Ch\u01b0a nh\u1eadn di\u1ec7n ca"}</p>
-                        </div>
-                        <Badge tone={entry.enoughPages ? "success" : "warning"}>{statusLabel(entry)}</Badge>
-                      </div>
-                      <p className="mt-3 line-clamp-2 text-sm text-muted-foreground">{entry.content || "Ch\u01b0a c\u00f3 n\u1ed9i dung"}</p>
-                    </button>
-                  )) : (
-                    <div className="rounded-lg border border-dashed p-8 text-center">
-                      <BookOpenText className="mx-auto h-8 w-8 text-muted-foreground" />
-                      <p className="mt-3 font-medium">{"Ch\u01b0a c\u00f3 nh\u1eadt k\u00fd"}</p>
-                      <p className="mt-1 text-sm text-muted-foreground">{"Sinh vi\u00ean l\u01b0u b\u00e0i \u0111\u1ea7u ti\u00ean th\u00ec timeline s\u1ebd hi\u1ec7n \u1edf \u0111\u00e2y."}</p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card className="bg-white/90">
-                <CardHeader>
-                  <CardTitle>{"L\u1ecbch s\u1eed ch\u1ec9nh s\u1eeda"}</CardTitle>
-                  <CardDescription>{"Xem nhanh h\u00f4m nay sinh vi\u00ean \u0111\u00e3 th\u00eam/s\u1eeda g\u00ec."}</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {selectedEntryId ? (
-                    <>
-                      {revisionsQuery.isLoading && <LoadingSpinner className="h-6 w-6" />}
-                      {(revisionsQuery.data ?? []).length > 0 ? (
-                        (revisionsQuery.data ?? []).map((revision) => (
-                          <div key={revision.id} className="rounded-lg border bg-white p-4">
-                            <div className="flex items-center gap-2 text-sm font-medium">
-                              <GitCommitVertical className="h-4 w-4" />
-                              {revision.diffSummary}
-                            </div>
-                            <p className="mt-2 text-xs text-muted-foreground">{new Date(revision.createdAt).toLocaleString("vi-VN")}</p>
-                            <p className="mt-3 line-clamp-4 text-sm leading-6 text-muted-foreground">{revision.newContent}</p>
-                          </div>
-                        ))
-                      ) : (
-                        <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
-                          {"Entry n\u00e0y ch\u01b0a c\u00f3 l\u1ecbch s\u1eed ch\u1ec9nh s\u1eeda."}
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
-                      {"Ch\u1ecdn m\u1ed9t ng\u00e0y trong timeline \u0111\u1ec3 xem l\u1ecbch s\u1eed ch\u1ec9nh s\u1eeda."}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
             {/* Student editor ────────────────────────────────────────── */}
             {canEdit && (
               <Card className="bg-white/90">
@@ -1051,6 +776,14 @@ export function JournalPage() {
                           </div>
                           <button
                             type="button"
+                            className="relative z-10 rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                            onClick={(e) => { e.stopPropagation(); void handleDownloadWord(); }}
+                            title="Tai file"
+                          >
+                            <Download className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
                             className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
                             onClick={(e) => { e.stopPropagation(); clearWordFile(); }}
                             title="Xóa file"
@@ -1112,6 +845,13 @@ export function JournalPage() {
                     onChange={(event) => setReferenceLinks(event.target.value)}
                   />
 
+                  <textarea
+                    className="min-h-24 w-full rounded-lg border bg-white p-4 text-sm leading-6 outline-none focus:border-slate-400"
+                    placeholder="Nguon trich dan: ten bai viet, link, nguoi/nhom cung cap thong tin..."
+                    value={sourceReferences}
+                    onChange={(event) => setSourceReferences(event.target.value)}
+                  />
+
                   {/* Draft persistence notice */}
                   <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                     <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />
@@ -1128,7 +868,7 @@ export function JournalPage() {
                     type="button"
                     variant="outline"
                     className="ml-0 bg-white md:ml-2"
-                    disabled={prepareReviewMutation.isPending || submitMailMutation.isPending || saveMutation.isPending || dayScheduleQuery.isLoading || attendancesQuery.isLoading}
+                    disabled={prepareReviewMutation.isPending || saveMutation.isPending || dayScheduleQuery.isLoading || attendancesQuery.isLoading}
                     onClick={() => prepareReviewMutation.mutate()}
                   >
                     {prepareReviewMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
@@ -1140,79 +880,6 @@ export function JournalPage() {
                 </CardContent>
               </Card>
             )}
-
-            {/* Right sidebar ──────────────────────────────────────────── */}
-          <div className="hidden space-y-6">
-            <Card className="bg-white/90">
-              <CardHeader>
-                <CardTitle>Timeline bài viết</CardTitle>
-                <CardDescription>Bấm từng ngày để xem nội dung và lịch sử sửa.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {entries.length > 0 ? entries.map((entry) => (
-                  <button
-                    key={entry.id}
-                    type="button"
-                    className="w-full rounded-lg border bg-white p-4 text-left transition hover:bg-slate-50"
-                    onClick={() => loadEntry(entry)}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-medium">{entry.workDate}</p>
-                        <p className="mt-1 text-sm text-muted-foreground">{entry.shiftCodes || "Chưa nhận diện ca"}</p>
-                      </div>
-                      <Badge tone={entry.enoughPages ? "success" : "warning"}>{statusLabel(entry)}</Badge>
-                    </div>
-                    <p className="mt-3 line-clamp-2 text-sm text-muted-foreground">{entry.content || "Chưa có nội dung"}</p>
-                  </button>
-                )) : (
-                  <div className="rounded-lg border border-dashed p-8 text-center">
-                    <BookOpenText className="mx-auto h-8 w-8 text-muted-foreground" />
-                    <p className="mt-3 font-medium">Chưa có nhật ký</p>
-                    <p className="mt-1 text-sm text-muted-foreground">Sinh viên lưu bài đầu tiên thì timeline sẽ hiện ở đây.</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {selectedEntryId && (
-              <Card className="bg-white/90">
-                <CardHeader>
-                  <CardTitle>Lịch sử chỉnh sửa</CardTitle>
-                  <CardDescription>Xem nhanh hôm nay sinh viên đã thêm/sửa gì.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {revisionsQuery.isLoading && <LoadingSpinner className="h-6 w-6" />}
-                  {(revisionsQuery.data ?? []).map((revision) => (
-                    <div key={revision.id} className="rounded-lg border bg-white p-4">
-                      <div className="flex items-center gap-2 text-sm font-medium">
-                        <GitCommitVertical className="h-4 w-4" />
-                        {revision.diffSummary}
-                      </div>
-                      <p className="mt-2 text-xs text-muted-foreground">{new Date(revision.createdAt).toLocaleString("vi-VN")}</p>
-                      <p className="mt-3 line-clamp-4 text-sm leading-6 text-muted-foreground">{revision.newContent}</p>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            )}
-
-            <Card className={isAdmin ? "hidden" : "bg-slate-950 text-white rounded-2xl"}>
-              <CardContent className="flex min-h-[170px] flex-col justify-center px-6 py-9">
-
-                <div className="flex items-center gap-2 text-lg font-semibold">
-                  <Mail className="h-5 w-5" />
-                  <span>Mail cuối ngày</span>
-                </div>
-
-                <p className="mt-3 text-sm leading-6 text-slate-300">
-                  Nút gửi mail sẽ tạo file Word nhật ký, đính kèm vào mail
-                  và gửi tới bộ phận tuyển dụng theo cấu hình hệ thống.
-                </p>
-
-              </CardContent>
-            </Card>
-          </div>
         </div>
       )}
     </div>

@@ -13,7 +13,7 @@ import { getLeaderShiftPeers, getTeamMemberFullDetail } from "@/services/team.se
 import { useAuthStore } from "@/store/auth-store";
 import { fallbackToFullImage, getFullImageUrl, getImageDisplayUrl } from "@/utils/cloudinary-image";
 import { formatDate } from "@/utils/date-format";
-import type { AttendanceAudit, Shift } from "@/types/api";
+import type { Shift } from "@/types/api";
 
 const roleLabels: Record<string, string> = {
   INTERN: "Sinh viên thường",
@@ -26,20 +26,17 @@ function today() {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
-function attendanceImages(attendance: AttendanceAudit) {
-  const legacy = [
-    { id: "checkin-personal", label: "TimeMark vào ca", imageUrl: attendance.checkinTimemarkImageUrl },
-    { id: "checkin-group", label: "Ảnh nhóm vào ca", imageUrl: attendance.checkinGroupImageUrl },
-    { id: "checkout-personal", label: "TimeMark tan ca", imageUrl: attendance.checkoutTimemarkImageUrl },
-    { id: "checkout-group", label: "Ảnh nhóm tan ca", imageUrl: attendance.checkoutGroupImageUrl },
-  ].filter((image): image is { id: string; label: string; imageUrl: string } => Boolean(image.imageUrl));
-  const extra = attendance.images.map((image) => ({
-    id: image.id,
-    label: `${image.imageType} · ${image.phase} · ${image.expectedTime}`,
-    imageUrl: image.imageUrl,
-    thumbnailUrl: image.thumbnailUrl,
-  }));
-  return [...legacy, ...extra];
+function complianceText(compliance: { missingImages: number; missingReportPages: number } | undefined) {
+  if (!compliance) return "Chua co du lieu";
+  const parts = [];
+  if (compliance.missingImages > 0) parts.push(`thieu ${compliance.missingImages} anh`);
+  if (compliance.missingReportPages > 0) parts.push(`thieu ${compliance.missingReportPages} trang Word`);
+  return parts.length > 0 ? parts.join(" · ") : "Day du";
+}
+
+function complianceTone(compliance: { enoughImages: boolean; enoughReportPages: boolean } | undefined) {
+  if (!compliance) return "muted" as const;
+  return compliance.enoughImages && compliance.enoughReportPages ? "success" as const : "warning" as const;
 }
 
 export function TeamPage() {
@@ -58,6 +55,15 @@ export function TeamPage() {
     queryFn: () => getTeamMemberFullDetail(user!.id, selectedStudentId!, selectedDate),
     enabled: Boolean(user?.id && selectedStudentId),
   });
+  const peers = peersQuery.data ?? [];
+  const managedShifts = useMemo(() => {
+    const shifts = new Map<string, Shift>();
+    peers.find((peer) => peer.user.id === user?.id)?.schedules.forEach((schedule) => shifts.set(schedule.shift.id, schedule.shift));
+    if (shifts.size === 0) peers.flatMap((peer) => peer.schedules).forEach((schedule) => shifts.set(schedule.shift.id, schedule.shift));
+    return [...shifts.values()].sort((a, b) => a.shiftOrder - b.shiftOrder || a.startTime.localeCompare(b.startTime));
+  }, [peers, user?.id]);
+  const activeManagedShiftId = selectedManagedShiftId ?? managedShifts[0]?.id ?? null;
+  const selectedShiftPeers = peers.filter((peer) => peer.user.id !== user?.id && peer.schedules.some((schedule) => schedule.shift.id === activeManagedShiftId));
 
   if (isLoading) {
     return (
@@ -75,16 +81,6 @@ export function TeamPage() {
   const leaderPolicy = policies.find((policy) => policy.role === "TEAM_LEADER");
   const managementPolicies = policies.filter((policy) => policy.role === "ADMIN");
   const isAdmin = user?.role === "ADMIN";
-  const peers = peersQuery.data ?? [];
-  const managedShifts = useMemo(() => {
-    const shifts = new Map<string, Shift>();
-    peers.find((peer) => peer.user.id === user?.id)?.schedules.forEach((schedule) => shifts.set(schedule.shift.id, schedule.shift));
-    if (shifts.size === 0) peers.flatMap((peer) => peer.schedules).forEach((schedule) => shifts.set(schedule.shift.id, schedule.shift));
-    return [...shifts.values()].sort((a, b) => a.shiftOrder - b.shiftOrder || a.startTime.localeCompare(b.startTime));
-  }, [peers, user?.id]);
-  const activeManagedShiftId = selectedManagedShiftId ?? managedShifts[0]?.id ?? null;
-  const selectedShiftPeers = peers.filter((peer) => peer.user.id !== user?.id && peer.schedules.some((schedule) => schedule.shift.id === activeManagedShiftId));
-
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <div>
@@ -147,7 +143,7 @@ export function TeamPage() {
                     <Badge tone="warning">{leaderPolicy.targetShiftsPerWeek} ca/tuần</Badge>
                   </div>
                   <p className="mt-3 text-sm text-muted-foreground">
-                    Tối đa {leaderPolicy.maxShiftsPerDay} ca/ngày. Có thể xem sinh viên trùng ca mình đã đăng ký.
+                    Tối đa {leaderPolicy.maxShiftsPerDay} ca/ngày, hoặc 4 ca/ngày khi đăng ký bù. Có thể xem sinh viên trùng ca mình đã đăng ký.
                   </p>
                 </div>
               )}
@@ -182,7 +178,7 @@ export function TeamPage() {
                   setSelectedDate(event.target.value);
                   setSelectedStudentId(null);
                 }} />
-                <Badge tone="muted">Quota nhóm trưởng: 3 ca/ngày · 9 ca/tuần</Badge>
+                <Badge tone="muted">Quota nhóm trưởng: 3 ca/ngày · 4 ca/ngày khi đi bù</Badge>
               </div>
 
               {peersQuery.isLoading ? (
@@ -222,7 +218,7 @@ export function TeamPage() {
                                 {schedule.shift.name} {schedule.shift.startTime.slice(0, 5)}-{schedule.shift.endTime.slice(0, 5)}
                               </Badge>
                             ))}
-                            <Badge tone="warning">Cần kiểm tra chi tiết</Badge>
+                            <Badge tone={complianceTone(peer.compliance)}>{complianceText(peer.compliance)}</Badge>
                           </div>
                         </div>
                         <Button size="sm" variant="outline" onClick={() => setSelectedStudentId(peer.user.id)}>
