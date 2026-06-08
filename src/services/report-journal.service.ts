@@ -1,6 +1,6 @@
 import { apiRequest } from "@/api/http";
 import { useAuthStore } from "@/store/auth-store";
-import type { DailyReportEntry, MailSubmitResult, ReportEntry, ReportProgress, ReportRevision, ReportWordUpload } from "@/types/api";
+import type { DailyMailReadiness, DailyReportEntry, MailSubmitResult, ReportEntry, ReportProgress, ReportRevision, ReportWordUpload } from "@/types/api";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080/api";
 
@@ -52,6 +52,10 @@ export async function downloadReportWord(userId: string, workDate: string) {
   const disposition = response.headers.get("Content-Disposition") ?? "";
   const match = disposition.match(/filename="?([^";]+)"?/i);
   return { blob, fileName: match?.[1] ?? "nhat-ky.docx" };
+}
+
+export function getDailyMailPreview(userId: string, workDate: string) {
+  return apiRequest<DailyMailReadiness>(`/report-journals/daily-mail-preview?userId=${userId}&workDate=${workDate}`);
 }
 
 export function submitDailyReportMail(

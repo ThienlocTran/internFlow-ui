@@ -299,6 +299,34 @@ export type DailyReportEntry = {
   entry: ReportEntry;
 };
 
+
+export type DailyMailReadinessItem = {
+  code: string;
+  label: string;
+  ready: boolean;
+  status: string;
+  missing: string[];
+  detail?: string;
+};
+
+export type DailyMailReadiness = {
+  userId: string;
+  workDate: string;
+  ready: boolean;
+  subject: string;
+  attachmentName?: string;
+  shiftSummary?: string;
+  workTimeSummary?: string;
+  scheduleCount: number;
+  attendanceCount: number;
+  requiredPhotoCount: number;
+  satisfiedPhotoCount: number;
+  skippedPhotoCount: number;
+  missingPhotoCount: number;
+  journalEntry?: ReportEntry | null;
+  checks: DailyMailReadinessItem[];
+  photoChecklist: AttendancePhotoChecklistItem[];
+};
 export type MailSubmitResult = {
   to: string;
   cc: string;

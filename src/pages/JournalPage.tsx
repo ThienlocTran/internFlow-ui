@@ -7,7 +7,6 @@ import {
   Download,
   FileText,
   Loader2,
-  Mail,
   Search,
   Upload,
   X,
@@ -25,7 +24,6 @@ import {
   getDailyReportEntries,
   getReportProgress,
   saveReportEntry,
-  submitDailyReportMail,
   uploadReportWord,
 } from "@/services/report-journal.service";
 import { getAttendances } from "@/services/attendance.service";
@@ -36,7 +34,6 @@ import type { Attendance, AttendanceImage, DailyReportEntry, ReportEntry, Shift,
 import { fallbackToFullImage, getFullImageUrl, getImageDisplayUrl } from "@/utils/cloudinary-image";
 import { readDocx } from "@/utils/docx-reader";
 
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
 const JOURNAL_REVIEW_STORAGE_KEY = "journal_review_payload";
 
 /**
@@ -189,44 +186,6 @@ function buildTimeSummary(
   }
   return registered.map((item) => `${item.shift.startTime.slice(0, 5)} - ${item.shift.endTime.slice(0, 5)}`).join(" \u00b7 ");
 }
-function loadGoogleScript() {
-  return new Promise<void>((resolve, reject) => {
-    if ((window as any).google?.accounts?.oauth2) { resolve(); return; }
-    const existingScript = document.querySelector<HTMLScriptElement>('script[src="https://accounts.google.com/gsi/client"]');
-    if (existingScript) {
-      existingScript.addEventListener("load", () => resolve(), { once: true });
-      existingScript.addEventListener("error", () => reject(new Error("Không tải được Google OAuth.")), { once: true });
-      return;
-    }
-    const script = document.createElement("script");
-    script.src = "https://accounts.google.com/gsi/client";
-    script.async = true;
-    script.defer = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Không tải được Google OAuth."));
-    document.head.appendChild(script);
-  });
-}
-
-async function requestGmailSendToken() {
-  if (!GOOGLE_CLIENT_ID) throw new Error("Chưa cấu hình VITE_GOOGLE_CLIENT_ID.");
-  await loadGoogleScript();
-  return new Promise<string>((resolve, reject) => {
-    const tokenClient = (window as any).google?.accounts.oauth2?.initTokenClient({
-      client_id: GOOGLE_CLIENT_ID,
-      scope: "https://www.googleapis.com/auth/gmail.send openid email profile",
-      prompt: "consent",
-      callback: (response: { access_token?: string; error?: string }) => {
-        if (response.error || !response.access_token) {
-          reject(new Error("Bạn cần cấp quyền Gmail để gửi mail bằng chính tài khoản của mình."));
-          return;
-        }
-        resolve(response.access_token);
-      },
-    });
-    tokenClient?.requestAccessToken();
-  });
-}
 
 // ─── Word upload status ────────────────────────────────────────────────────────
 type WordUploadState =
@@ -255,7 +214,6 @@ export function JournalPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [wordUpload, setWordUpload] = useState<WordUploadState>({ status: "idle" });
   const [uploadedWordDocument, setUploadedWordDocument] = useState<UploadedWordDocument | null>(null);
-  const [isReviewOpen, setIsReviewOpen] = useState(false);
   // When a Word file is uploaded and contains page metadata, use that count;
   // otherwise fall back to text-based estimation.
   const [wordFilePage, setWordFilePage] = useState<number | null>(null);
@@ -404,7 +362,6 @@ export function JournalPage() {
     },
     onSuccess: () => {
       persistReviewPayload();
-      setIsReviewOpen(false);
       navigate("/journal/review");
       setNotice("Đã chuẩn bị xong bản review. Kiểm tra lại nội dung và ảnh rồi bấm gửi.");
     },
@@ -413,23 +370,6 @@ export function JournalPage() {
     },
   });
 
-  const submitMailMutation = useMutation({
-    mutationFn: async () => {
-      if (!currentUser?.id) throw new Error("Bạn cần đăng nhập trước khi gửi mail cuối ngày.");
-      await ensureEntryReadyForReview();
-      const gmailToken = await requestGmailSendToken();
-      return submitDailyReportMail(currentUser.id, workDate, gmailToken, uploadedWordDocument);
-    },
-    onSuccess: (result) => {
-      setIsReviewOpen(false);
-      setNotice(`Đã gửi mail tới ${result.to}, CC ${result.cc}. File đính kèm: ${result.attachmentName}`);
-      queryClient.invalidateQueries({ queryKey: ["report-progress", currentUser?.id] });
-      queryClient.invalidateQueries({ queryKey: ["report-journals-daily", workDate] });
-    },
-    onError: (error) => {
-      setNotice(error instanceof Error ? error.message : "Không thể gửi mail cuối ngày.");
-    },
-  });
 
   // ── Word file upload handler ─────────────────────────────────────────────────
   const handleWordFile = useCallback(async (file: File) => {
@@ -515,7 +455,6 @@ export function JournalPage() {
     setReferenceLinks(item.entry.referenceLinks ?? "");
     setSourceReferences(item.entry.sourceReferences ?? "");
     setUploadedWordDocument(null);
-    setIsReviewOpen(false);
     setWordFilePage(null);
     setWordUpload({ status: "idle" });
     setNotice(null);
@@ -546,7 +485,6 @@ export function JournalPage() {
       setSourceReferences("");
     }
     setUploadedWordDocument(null);
-    setIsReviewOpen(false);
     setWordFilePage(null);
     setWordUpload({ status: "idle" });
   }, [workDate, currentUser?.id, canEdit, currentEntry]);
@@ -704,157 +642,6 @@ export function JournalPage() {
 
       {progressQuery.data && (
         <div className="space-y-6">
-          <div className="space-y-6">
-            {/* Document summary card ──────────────────────────────────── */}
-          {canEdit && isReviewOpen && (<div className="space-y-6">
-                <Card className="bg-white/95 shadow-sm ring-1 ring-slate-200">
-                  <CardHeader>
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <CardTitle>{"Review Mail Cu\u1ed1i Ng\u00e0y"}</CardTitle>
-                        <CardDescription>{"Ki\u1ec3m tra l\u1ea1i th\u00f4ng tin sinh vi\u00ean, \u1ea3nh trong ca v\u00e0 file \u0111\u00ednh k\u00e8m tr\u01b0\u1edbc khi g\u1eedi."}</CardDescription>
-                      </div>
-                      <Badge tone="muted">{uploadedWordDocument ? "D\u00f9ng file Word \u0111\u00e3 t\u1ea3i l\u00ean" : "H\u1ec7 th\u1ed1ng s\u1ebd \u0111\u00f3ng g\u00f3i th\u00e0nh file Word"}</Badge>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-6">
-                    {notice && <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-700">{notice}</p>}
-                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                      <div className="rounded-lg border bg-slate-50 p-4">
-                        <p className="text-sm text-muted-foreground">{"H\u1ecd t\u00ean"}</p>
-                        <p className="mt-2 font-medium">{currentUser?.fullName || "Ch\u01b0a c\u00f3"}</p>
-                      </div>
-                      <div className="rounded-lg border bg-slate-50 p-4">
-                        <p className="text-sm text-muted-foreground">MSSV</p>
-                        <p className="mt-2 font-medium">{currentUser?.studentCode || "Ch\u01b0a c\u00f3"}</p>
-                      </div>
-                      <div className="rounded-lg border bg-slate-50 p-4">
-                        <p className="text-sm text-muted-foreground">{"L\u1edbp / Tr\u01b0\u1eddng"}</p>
-                        <p className="mt-2 font-medium">{currentUser?.studentClass || "Ch\u01b0a c\u00f3"}{currentUser?.school ? ` \u00b7 ${currentUser.school}` : ""}</p>
-                      </div>
-                      <div className="rounded-lg border bg-slate-50 p-4">
-                        <p className="text-sm text-muted-foreground">{"Ngu\u1ed3n file"}</p>
-                        <p className="mt-2 break-words font-medium">{reviewAttachmentName}</p>
-                      </div>
-                      <div className="rounded-lg border bg-slate-50 p-4">
-                        <p className="text-sm text-muted-foreground">{"Ng\u00e0y"}</p>
-                        <p className="mt-2 font-medium">{formatDisplayDate(workDate)}</p>
-                      </div>
-                      <div className="rounded-lg border bg-slate-50 p-4">
-                        <p className="text-sm text-muted-foreground">{"Ca l\u00e0m"}</p>
-                        <p className="mt-2 font-medium">{reviewShiftSummary}</p>
-                      </div>
-                      <div className="rounded-lg border bg-slate-50 p-4">
-                        <p className="text-sm text-muted-foreground">{"Th\u1eddi gian"}</p>
-                        <p className="mt-2 font-medium">{reviewTimeSummary}</p>
-                      </div>
-                    </div>
-
-                    <div className="rounded-xl border bg-slate-50 p-4">
-                      <p className="text-sm font-medium">{"T\u00f3m t\u1eaft nh\u1eadt k\u00fd"}</p>
-                      <p className="mt-2 text-sm text-muted-foreground whitespace-pre-wrap">{content.trim() || "Ch\u01b0a c\u00f3 n\u1ed9i dung"}</p>
-                      {referenceLinks.trim() && (
-                        <>
-                          <p className="mt-4 text-sm font-medium">{"T\u00e0i li\u1ec7u tham kh\u1ea3o"}</p>
-                          <p className="mt-2 text-sm text-muted-foreground whitespace-pre-wrap">{referenceLinks.trim()}</p>
-                        </>
-                      )}
-                      {sourceReferences.trim() && (
-                        <>
-                          <p className="mt-4 text-sm font-medium">{"Ngu\u1ed3n tr\u00edch d\u1eabn"}</p>
-                          <p className="mt-2 text-sm text-muted-foreground whitespace-pre-wrap">{sourceReferences.trim()}</p>
-                        </>
-                      )}
-                    </div>
-
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-sm font-medium">{"\u1ea2nh \u0111i\u1ec3m danh t\u1eeb \u0111\u1ea7u \u0111\u1ebfn cu\u1ed1i ca"}</p>
-                        <Badge tone="muted">{reviewAttendances.length} ca</Badge>
-                      </div>
-                      {reviewAttendances.length > 0 ? reviewAttendances.map((attendance) => {
-                        const previewImages = attendancePreviewImages(attendance);
-                        return (
-                          <div key={attendance.id} className="rounded-xl border p-4">
-                            <div className="flex flex-wrap items-center justify-between gap-3">
-                              <div>
-                                <p className="font-medium">{attendance.shift.name}</p>
-                                <p className="mt-1 text-sm text-muted-foreground">{attendance.shift.startTime.slice(0, 5)} - {attendance.shift.endTime.slice(0, 5)}</p>
-                              </div>
-                              <Badge tone="muted">{attendance.status}</Badge>
-                            </div>
-                            {previewImages.length > 0 ? (
-                              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                                {previewImages.map((image) => {
-                                  const fullUrl = getFullImageUrl(image);
-                                  const displayUrl = getImageDisplayUrl(image);
-                                  if (!fullUrl || !displayUrl) return null;
-                                  return (
-                                  <a key={image.key} href={fullUrl} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-lg border bg-white">
-                                    <img
-                                      src={displayUrl}
-                                      alt={image.label}
-                                      loading="lazy"
-                                      onError={(event) => fallbackToFullImage(event, fullUrl)}
-                                      className="h-40 w-full object-cover"
-                                    />
-                                    <div className="p-3">
-                                      <p className="text-sm font-medium">{image.label}</p>
-                                    </div>
-                                  </a>
-                                  );
-                                })}
-                              </div>
-                            ) : (
-                              <p className="mt-3 text-sm text-muted-foreground">{"Ch\u01b0a c\u00f3 \u1ea3nh n\u00e0o cho ca n\u00e0y."}</p>
-                            )}
-                          </div>
-                        );
-                      }) : (
-                        <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
-                          {"Ch\u01b0a t\u1ea3i \u0111\u01b0\u1ee3c d\u1eef li\u1ec7u \u1ea3nh \u0111i\u1ec3m danh cho ng\u00e0y n\u00e0y."}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="rounded-xl border bg-slate-50 p-4">
-                      <p className="text-sm font-medium">{"File nh\u1eadt k\u00fd s\u1ebd g\u1eedi"}</p>
-                      <p className="mt-2 break-words text-sm text-muted-foreground">{reviewAttachmentName}</p>
-                      <p className="mt-4 text-sm font-medium">{"N\u1ed9i dung nh\u1eadt k\u00fd"}</p>
-                      <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{content.trim() || "Ch\u01b0a c\u00f3 n\u1ed9i dung"}</p>
-                      {referenceLinks.trim() && (
-                        <>
-                          <p className="mt-4 text-sm font-medium">{"T\u00e0i li\u1ec7u tham kh\u1ea3o"}</p>
-                          <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{referenceLinks.trim()}</p>
-                        </>
-                      )}
-                      {sourceReferences.trim() && (
-                        <>
-                          <p className="mt-4 text-sm font-medium">{"Ngu\u1ed3n tr\u00edch d\u1eabn"}</p>
-                          <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{sourceReferences.trim()}</p>
-                        </>
-                      )}
-                    </div>
-
-                    <div className="flex flex-wrap gap-3">
-                      <Button type="button" variant="outline" className="bg-white" onClick={() => setIsReviewOpen(false)}>
-                        {"\u0110\u00f3ng review"}
-                      </Button>
-                      <Button
-                        type="button"
-                        disabled={submitMailMutation.isPending || prepareReviewMutation.isPending}
-                        onClick={() => submitMailMutation.mutate()}
-                      >
-                        {submitMailMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
-                        {"X\u00e1c nh\u1eadn g\u1eedi mail"}
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-            )}
-          </div>
-
             <Card className="bg-white/90">
               <CardHeader>
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1075,7 +862,7 @@ export function JournalPage() {
                     type="button"
                     variant="outline"
                     className="ml-0 bg-white md:ml-2"
-                    disabled={prepareReviewMutation.isPending || submitMailMutation.isPending || saveMutation.isPending || dayScheduleQuery.isLoading || attendancesQuery.isLoading}
+                    disabled={prepareReviewMutation.isPending || saveMutation.isPending || dayScheduleQuery.isLoading || attendancesQuery.isLoading}
                     onClick={() => prepareReviewMutation.mutate()}
                   >
                     {prepareReviewMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
