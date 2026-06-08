@@ -111,26 +111,6 @@ function resolveUploadedWordPageCount(pageCount: number | null, wordCount: numbe
   return Math.max(pageCount, estimatedFromWords);
 }
 
-function fileToBase64(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result;
-      if (typeof result !== "string") {
-        reject(new Error("Không thể đọc file Word."));
-        return;
-      }
-      const base64 = result.split(",")[1];
-      if (!base64) {
-        reject(new Error("File Word không hợp lệ."));
-        return;
-      }
-      resolve(base64);
-    };
-    reader.onerror = () => reject(new Error("Không thể đọc file Word."));
-    reader.readAsDataURL(file);
-  });
-}
 
 function attendancePreviewImages(attendance: Attendance) {
   const items: Array<{ key: string; label: string; url: string; thumbnailUrl?: string }> = [];
