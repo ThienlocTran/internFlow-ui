@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Camera, CheckCircle2, Clock3, Eye, ImageUp, Loader2, UploadCloud } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -128,6 +128,19 @@ async function removePreviewDrafts(keys: string[]) {
 }
 
 type SlotKey = "checkin-personal" | "checkout-personal" | string;
+
+type ChecklistStatus = "done" | "draft" | "missing" | "skipped" | "loading" | "blocked";
+
+type PhotoChecklistRow = {
+  id: string;
+  section: string;
+  label: string;
+  time: string;
+  description: string;
+  status: ChecklistStatus;
+  reason?: string;
+  action?: ReactNode;
+};
 
 function today() {
   return toDateInputValue(new Date());
@@ -288,6 +301,127 @@ function ImagePicker({
         onChange={(event) => onChange(event.target.files?.[0])}
       />
     </label>
+  );
+}
+
+function checklistBadgeTone(status: ChecklistStatus) {
+  if (status === "done") return "success" as const;
+  if (status === "missing" || status === "draft") return "warning" as const;
+  return "muted" as const;
+}
+
+function checklistStatusLabel(status: ChecklistStatus) {
+  switch (status) {
+    case "done":
+      return "Da nop";
+    case "draft":
+      return "Da chon";
+    case "missing":
+      return "Thieu";
+    case "skipped":
+      return "Bo qua";
+    case "loading":
+      return "Dang tai";
+    case "blocked":
+      return "Cho checkin";
+    default:
+      return "Chua den";
+  }
+}
+
+function ChecklistUploadButton({
+  disabled,
+  label,
+  onChange,
+}: {
+  disabled?: boolean;
+  label: string;
+  onChange: (file: File | undefined) => void;
+}) {
+  return (
+    <label
+      className={`inline-flex h-9 items-center justify-center gap-2 rounded-md border px-3 text-sm font-medium transition ${
+        disabled
+          ? "cursor-not-allowed bg-slate-100 text-muted-foreground opacity-60"
+          : "cursor-pointer bg-white hover:bg-slate-50"
+      }`}
+    >
+      <UploadCloud className="h-4 w-4" />
+      {label}
+      <Input
+        className="sr-only"
+        type="file"
+        accept="image/*"
+        disabled={disabled}
+        onChange={(event) => {
+          onChange(event.target.files?.[0]);
+          event.target.value = "";
+        }}
+      />
+    </label>
+  );
+}
+
+function PhotoChecklistPanel({
+  rows,
+  loading,
+  error,
+}: {
+  rows: PhotoChecklistRow[];
+  loading: boolean;
+  error: boolean;
+}) {
+  const groupedRows = rows.reduce<Record<string, PhotoChecklistRow[]>>((groups, row) => {
+    groups[row.section] = [...(groups[row.section] ?? []), row];
+    return groups;
+  }, {});
+
+  return (
+    <section className="space-y-4 rounded-lg border bg-slate-50 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="font-semibold">Checklist anh theo moc</h3>
+          <p className="mt-1 text-sm text-muted-foreground">Theo doi tung anh can nop trong ca dang chon.</p>
+        </div>
+        {loading && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Dang tai checklist
+          </div>
+        )}
+      </div>
+
+      {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">Khong tai duoc checklist anh.</div>}
+
+      {!loading && rows.length === 0 && (
+        <div className="rounded-md border border-dashed bg-white p-4 text-sm text-muted-foreground">
+          Khong co moc anh cho ca nay.
+        </div>
+      )}
+
+      <div className="space-y-4">
+        {Object.entries(groupedRows).map(([section, sectionRows]) => (
+          <div key={section} className="space-y-2">
+            <p className="text-sm font-medium text-slate-700">{section}</p>
+            <div className="grid gap-2">
+              {sectionRows.map((row) => (
+                <div key={row.id} className="grid gap-3 rounded-md border bg-white p-3 md:grid-cols-[96px_1fr_auto] md:items-center">
+                  <div className="font-mono text-sm font-semibold text-slate-700">{row.time}</div>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-medium">{row.label}</p>
+                      <Badge tone={checklistBadgeTone(row.status)}>{checklistStatusLabel(row.status)}</Badge>
+                    </div>
+                    <p className="mt-1 text-sm text-muted-foreground">{row.reason ?? row.description}</p>
+                  </div>
+                  <div className="md:justify-self-end">{row.action}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -836,6 +970,117 @@ function InternAttendancePage() {
   };
 
 
+  const slotHasDraft = (slotKey: SlotKey) => Boolean(files[slotKey] || getDraft(slotKey) || getPreviewDraft(slotKey));
+  const slotStatus = (
+    imageType: AttendanceImageType,
+    phase: AttendanceImagePhase,
+    expectedTime: string,
+    slotKey: SlotKey,
+  ): ChecklistStatus => {
+    if (!currentAttendance) return "blocked";
+    if (photoChecklistQuery.isLoading) return "loading";
+    const requirement = findSlotRequirement(imageType, phase, expectedTime);
+    const savedImage = savedSlotImage(currentAttendance, imageType, phase, expectedTime);
+    if (requirement?.status === "SKIPPED") return "skipped";
+    if (requirement?.status === "SATISFIED" || requirement?.imageUrl || savedImage) return "done";
+    if (slotHasDraft(slotKey)) return "draft";
+    return "missing";
+  };
+  const slotReason = (requirement: AttendancePhotoChecklistItem | undefined, status: ChecklistStatus, fallback: string) => {
+    if (status === "blocked") return "Checkin truoc khi upload moc nay.";
+    if (status === "loading") return "Dang doi checklist tu backend.";
+    if (status === "missing" && currentAttendance && !requirement) return "Moc nay chua co trong checklist backend.";
+    return requirement?.reason ?? fallback;
+  };
+  const photoChecklistRows: PhotoChecklistRow[] = selectedShift
+    ? [
+        {
+          id: "checkin-personal",
+          section: "Vao va ra ca",
+          label: "Anh TimeMark vao ca",
+          time: selectedShift.startTime.slice(0, 5),
+          description: "Bat buoc de checkin.",
+          status: currentAttendance?.checkinTimemarkImageUrl ? "done" : slotHasDraft("checkin-personal") ? "draft" : "missing",
+          action: (
+            <ChecklistUploadButton
+              disabled={Boolean(currentAttendance)}
+              label={currentAttendance ? "Da checkin" : "Chon anh"}
+              onChange={(file) => handleFileChange("checkin-personal", file)}
+            />
+          ),
+        },
+        ...personalSlots.map((slot, index) => {
+          const key = fileKey("PERSONAL_TIMEMARK", "DURING_SHIFT", slot.time);
+          const requirement = findSlotRequirement("PERSONAL_TIMEMARK", "DURING_SHIFT", slot.time);
+          const status = slotStatus("PERSONAL_TIMEMARK", "DURING_SHIFT", slot.time, key);
+          return {
+            id: key,
+            section: "TimeMark ca nhan",
+            label: `Moc ${slot.time}`,
+            time: slot.time,
+            description: slot.description,
+            status,
+            reason: slotReason(requirement, status, slot.description),
+            action: (
+              <ChecklistUploadButton
+                disabled={!currentAttendance || photoChecklistQuery.isLoading || !requirement}
+                label={status === "done" ? "Thay anh" : "Upload"}
+                onChange={(file) => handlePersistedSlotChange(key, file, "PERSONAL_TIMEMARK", "DURING_SHIFT", slot.time, index, requirement?.id)}
+              />
+            ),
+          };
+        }),
+        ...groupSlots.map((slot, index) => {
+          const phase: AttendanceImagePhase = "DURING_SHIFT";
+          const key = fileKey("GROUP", phase, slot.time);
+          const requirement = findSlotRequirement("GROUP", phase, slot.time);
+          const status = slotStatus("GROUP", phase, slot.time, key);
+          return {
+            id: key,
+            section: "Anh nhom gio tron",
+            label: `Moc ${slot.time}`,
+            time: slot.time,
+            description: slot.description,
+            status,
+            reason: slotReason(requirement, status, slot.description),
+            action: (
+              <ChecklistUploadButton
+                disabled={!currentAttendance || photoChecklistQuery.isLoading || !requirement}
+                label={status === "done" ? "Thay anh" : "Upload"}
+                onChange={(file) => handlePersistedSlotChange(key, file, "GROUP", phase, slot.time, index, requirement?.id)}
+              />
+            ),
+          };
+        }),
+        {
+          id: "checkout-personal",
+          section: "Vao va ra ca",
+          label: "Anh TimeMark tan ca",
+          time: selectedShift.endTime.slice(0, 5),
+          description: "Bat buoc de checkout.",
+          status: currentAttendance?.checkoutTimemarkImageUrl
+            ? "done"
+            : slotHasDraft("checkout-personal")
+              ? "draft"
+              : currentAttendance
+                ? "missing"
+                : "blocked",
+          action: (
+            <ChecklistUploadButton
+              disabled={!currentAttendance || currentAttendance.status === "CHECKED_OUT"}
+              label={currentAttendance?.checkoutTimemarkImageUrl ? "Thay anh" : "Chon anh"}
+              onChange={(file) => {
+                handleFileChange("checkout-personal", file);
+                if (file && currentAttendance) {
+                  saveCheckoutDraftMutation.mutate({ slotKey: "checkout-personal", file });
+                }
+              }}
+            />
+          ),
+        },
+      ]
+    : [];
+
   const isBusy = saveMutation.isPending || checkoutMutation.isPending;
 
   return (
@@ -955,6 +1200,12 @@ function InternAttendancePage() {
                 {errorMessage ?? message}
               </div>
             )}
+
+            <PhotoChecklistPanel
+              rows={photoChecklistRows}
+              loading={Boolean(currentAttendance && photoChecklistQuery.isLoading)}
+              error={Boolean(currentAttendance && photoChecklistQuery.isError)}
+            />
 
             <div className="grid gap-4 md:grid-cols-2">
               <ImagePicker
