@@ -109,6 +109,11 @@ function resolveUploadedWordPageCount(pageCount: number | null, wordCount: numbe
 }
 
 
+function withDocxExtension(fileName: string | null | undefined) {
+  const normalized = fileName?.trim();
+  if (!normalized) return "Nhat ky thuc tap.docx";
+  return normalized.toLowerCase().endsWith(".docx") ? normalized : `${normalized}.docx`;
+}
 function attendancePreviewImages(attendance: Attendance) {
   const items: Array<{ key: string; label: string; url: string; thumbnailUrl?: string }> = [];
   if (attendance.checkinTimemarkImageUrl) {
@@ -262,9 +267,8 @@ export function JournalPage() {
   const requiredWords = requiredPages * WORDS_PER_PAGE_ESTIMATE;
   const pageMarks = Array.from({ length: Math.max(requiredPages, draftPageCount, 1) }, (_, index) => index + 1);
   const reviewAttendances = attendancesQuery.data ?? [];
-  const reviewAttachmentName = wordUpload.status === "done"
-    ? wordUpload.fileName
-    : `${progressQuery.data?.document.currentFileName ?? "Nhat ky thuc tap"}.docx`;
+  const storedWordFileName = wordUpload.status === "done" ? wordUpload.fileName : undefined;
+  const reviewAttachmentName = storedWordFileName ?? withDocxExtension(progressQuery.data?.document.currentFileName);
   const reviewShiftSummary = buildShiftSummary(dayScheduleQuery.data, currentEntry?.shiftCodes);
   const reviewTimeSummary = buildTimeSummary(dayScheduleQuery.data, currentEntry?.workTimeSummary);
 
@@ -340,7 +344,7 @@ export function JournalPage() {
         referenceLinks,
         sourceReferences,
         attachmentName: reviewAttachmentName,
-        storedWordFileName: wordUpload.status === "done" ? wordUpload.fileName : progressQuery.data?.document.currentFileName,
+        storedWordFileName,
         uploadedWordDocument,
         shiftSummary: reviewShiftSummary,
         timeSummary: reviewTimeSummary,
@@ -462,6 +466,11 @@ export function JournalPage() {
 
 
   // ── localStorage draft persistence ──────────────────────────────────────────
+  useEffect(() => {
+    setUploadedWordDocument(null);
+    setWordFilePage(null);
+    setWordUpload({ status: "idle" });
+  }, [currentUser?.id, workDate]);
   // Load draft when workDate changes (for student editor only)
   useEffect(() => {
     if (!canEdit || !currentUser?.id) return;
@@ -484,9 +493,6 @@ export function JournalPage() {
       setReferenceLinks("");
       setSourceReferences("");
     }
-    setUploadedWordDocument(null);
-    setWordFilePage(null);
-    setWordUpload({ status: "idle" });
   }, [workDate, currentUser?.id, canEdit, currentEntry]);
 
   // Auto-save draft to localStorage when journal fields change
