@@ -25,6 +25,7 @@ type ReviewPayload = {
   referenceLinks: string;
   sourceReferences?: string;
   attachmentName: string;
+  storedWordFileName?: string;
   uploadedWordDocument?: UploadedWordDocument | null;
   shiftSummary: string;
   timeSummary: string;
@@ -174,7 +175,7 @@ export function JournalReviewPage() {
               <CardDescription>Thông tin sinh viên, ngày, ca làm và khung giờ sẽ được dùng trong mail cuối ngày.</CardDescription>
             </div>
             <Badge tone="muted">
-              {payload.uploadedWordDocument ? "Dùng file Word đã tải lên" : "Hệ thống sẽ đóng gói thành file Word"}
+              {payload.uploadedWordDocument || payload.storedWordFileName ? "Dung file Word da tai len" : "He thong se dong goi thanh file Word"}
             </Badge>
           </div>
         </CardHeader>

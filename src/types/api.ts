@@ -281,6 +281,14 @@ export type ReportRevision = {
   createdAt: string;
 };
 
+export type ReportWordUpload = {
+  entry: ReportEntry;
+  fileName: string;
+  downloadUrl: string;
+  pageCount: number;
+  wordCount: number;
+};
+
 export type ReportProgress = {
   document: ReportDocument;
   entries: ReportEntry[];

@@ -4,6 +4,7 @@ import {
   BookOpenText,
   CalendarDays,
   CheckCircle2,
+  Download,
   FileText,
   Loader2,
   Mail,
@@ -20,10 +21,12 @@ import { Input } from "@/components/ui/input";
 import { ErrorState } from "@/components/common/ErrorState";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import {
+  downloadReportWord,
   getDailyReportEntries,
   getReportProgress,
   saveReportEntry,
   submitDailyReportMail,
+  uploadReportWord,
 } from "@/services/report-journal.service";
 import { getAttendances } from "@/services/attendance.service";
 import { getUserSchedule } from "@/services/schedule.service";
@@ -321,7 +324,9 @@ export function JournalPage() {
   const requiredWords = requiredPages * WORDS_PER_PAGE_ESTIMATE;
   const pageMarks = Array.from({ length: Math.max(requiredPages, draftPageCount, 1) }, (_, index) => index + 1);
   const reviewAttendances = attendancesQuery.data ?? [];
-  const reviewAttachmentName = uploadedWordDocument?.name ?? `${progressQuery.data?.document.currentFileName ?? "Nhat ky thuc tap"}.docx`;
+  const reviewAttachmentName = wordUpload.status === "done"
+    ? wordUpload.fileName
+    : `${progressQuery.data?.document.currentFileName ?? "Nhat ky thuc tap"}.docx`;
   const reviewShiftSummary = buildShiftSummary(dayScheduleQuery.data, currentEntry?.shiftCodes);
   const reviewTimeSummary = buildTimeSummary(dayScheduleQuery.data, currentEntry?.workTimeSummary);
 
@@ -397,6 +402,7 @@ export function JournalPage() {
         referenceLinks,
         sourceReferences,
         attachmentName: reviewAttachmentName,
+        storedWordFileName: wordUpload.status === "done" ? wordUpload.fileName : progressQuery.data?.document.currentFileName,
         uploadedWordDocument,
         shiftSummary: reviewShiftSummary,
         timeSummary: reviewTimeSummary,
@@ -447,26 +453,36 @@ export function JournalPage() {
 
   // ── Word file upload handler ─────────────────────────────────────────────────
   const handleWordFile = useCallback(async (file: File) => {
+    if (!currentUser?.id) {
+      setWordUpload({ status: "error", message: "Ban can dang nhap truoc khi upload Word." });
+      return;
+    }
     if (!file.name.toLowerCase().endsWith(".docx")) {
       setWordUpload({ status: "error", message: "Chỉ hỗ trợ định dạng .docx. Vui lòng lưu file Word dưới dạng .docx rồi thử lại." });
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setWordUpload({ status: "error", message: "File Word vuot qua gioi han 10MB." });
       return;
     }
     setWordUpload({ status: "loading" });
     try {
       const info = await readDocx(file);
-      const base64 = await fileToBase64(file);
+      const uploaded = await uploadReportWord(currentUser.id, workDate, file);
       const resolvedPageCount = resolveUploadedWordPageCount(info.pageCount, info.wordCount);
       setWordUpload({
         status: "done",
-        fileName: file.name,
-        pageCount: resolvedPageCount,
-        wordCount: info.wordCount,
+        fileName: uploaded.fileName,
+        pageCount: uploaded.pageCount || resolvedPageCount,
+        wordCount: uploaded.wordCount || info.wordCount,
       });
-      setUploadedWordDocument({ name: file.name, base64 });
+      setUploadedWordDocument(null);
       // Populate textarea with extracted text (if any)
-      if (info.text) setContent(info.text);
+      setContent(uploaded.entry.content ?? info.text ?? "");
       // Guard against stale DOCX metadata by comparing it with the 210-words/page estimate.
-      setWordFilePage(resolvedPageCount);
+      setWordFilePage(uploaded.pageCount || resolvedPageCount);
+      queryClient.invalidateQueries({ queryKey: ["report-progress", currentUser.id] });
+      setNotice("Da upload va luu file Word goc cho nhat ky ngay nay.");
     } catch (err) {
       setWordUpload({
         status: "error",
@@ -474,7 +490,7 @@ export function JournalPage() {
       });
       setUploadedWordDocument(null);
     }
-  }, []);
+  }, [currentUser?.id, queryClient, workDate]);
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -487,6 +503,21 @@ export function JournalPage() {
     e.preventDefault();
     const file = e.dataTransfer.files[0];
     if (file) handleWordFile(file);
+  };
+
+  const handleDownloadWord = async () => {
+    if (!currentUser?.id) return;
+    try {
+      const { blob, fileName } = await downloadReportWord(currentUser.id, workDate);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Khong the tai file Word.");
+    }
   };
 
   const clearWordFile = () => {
@@ -523,7 +554,6 @@ export function JournalPage() {
       setSourceReferences(currentEntry.sourceReferences ?? "");
       return;
     }
-
     // Otherwise load draft from localStorage
     const draft = loadDraft(currentUser.id, workDate);
     if (draft) {
@@ -971,6 +1001,14 @@ export function JournalPage() {
                               </p>
                             </div>
                           </div>
+                          <button
+                            type="button"
+                            className="relative z-10 rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                            onClick={(e) => { e.stopPropagation(); void handleDownloadWord(); }}
+                            title="Tai file"
+                          >
+                            <Download className="h-4 w-4" />
+                          </button>
                           <button
                             type="button"
                             className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
