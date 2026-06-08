@@ -4,6 +4,7 @@ import type {
   AttendanceImage,
   AttendanceImagePhase,
   AttendanceImageType,
+  AttendancePhotoChecklistItem,
 } from "@/types/api";
 
 export type CheckinPayload = {
@@ -22,6 +23,7 @@ export type CheckoutPayload = {
 };
 
 export type AttendanceImagePayload = {
+  requirementId?: string;
   imageType: AttendanceImageType;
   phase: AttendanceImagePhase;
   expectedTime: string;
@@ -39,6 +41,10 @@ export type AttendanceImagePayload = {
 
 export function getAttendances(userId: string, date: string) {
   return apiRequest<Attendance[]>(`/attendances?userId=${userId}&date=${date}`);
+}
+
+export function getPhotoChecklist(userId: string, shiftId: string, date: string) {
+  return apiRequest<AttendancePhotoChecklistItem[]>(`/attendances/photo-checklist?userId=${userId}&shiftId=${shiftId}&date=${date}`);
 }
 
 export function checkin(payload: CheckinPayload) {
@@ -64,6 +70,13 @@ export function saveCheckoutDraft(attendanceId: string, payload: CheckoutPayload
 
 export function addAttendanceImage(attendanceId: string, payload: AttendanceImagePayload) {
   return apiRequest<AttendanceImage>(`/attendances/${attendanceId}/images`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function addAttendanceImageByRequirement(attendanceId: string, requirementId: string, payload: AttendanceImagePayload) {
+  return apiRequest<AttendanceImage>(`/attendances/${attendanceId}/requirements/${requirementId}/images`, {
     method: "POST",
     body: JSON.stringify(payload),
   });

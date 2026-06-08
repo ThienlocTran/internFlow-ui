@@ -9,12 +9,12 @@ import { Input } from "@/components/ui/input";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { ErrorState } from "@/components/common/ErrorState";
 import { getShifts } from "@/services/shift.service";
-import { addAttendanceImage, checkin, checkout, getAttendances, saveCheckoutDraft } from "@/services/attendance.service";
+import { addAttendanceImageByRequirement, checkin, checkout, getAttendances, getPhotoChecklist, saveCheckoutDraft } from "@/services/attendance.service";
 import { getUserSchedule } from "@/services/schedule.service";
 import { uploadImage } from "@/services/upload.service";
 import { getCohorts, getCohortStudents } from "@/services/cohort.service";
 import { useAuthStore } from "@/store/auth-store";
-import type { Attendance, AttendanceImagePhase, AttendanceImageType, Shift } from "@/types/api";
+import type { Attendance, AttendanceImagePhase, AttendanceImageType, AttendancePhotoChecklistItem, Shift } from "@/types/api";
 import { getGroupPhotoSlots, getPersonalIntervalSlots } from "@/utils/attendance-photo-rules";
 import { formatDate } from "@/utils/date-format";
 import { fallbackToFullImage, getImageDisplayUrl } from "@/utils/cloudinary-image";
@@ -501,6 +501,26 @@ function InternAttendancePage() {
     currentAttendance.id === recentCheckoutAttendanceId;
   const personalSlots = selectedShift ? getPersonalIntervalSlots(selectedShift) : [];
   const groupSlots = selectedShift ? getGroupPhotoSlots(selectedShift) : [];
+  const photoChecklistQuery = useQuery({
+    queryKey: ["photo-checklist", user?.id, selectedShift?.id, attendanceDate],
+    queryFn: () => getPhotoChecklist(user!.id, selectedShift!.id, attendanceDate),
+    enabled: Boolean(user?.id && selectedShift?.id && currentAttendance?.id),
+  });
+  const photoChecklist = photoChecklistQuery.data ?? [];
+  const findSlotRequirement = (
+    imageType: AttendanceImageType,
+    phase: AttendanceImagePhase,
+    expectedTime: string,
+  ): AttendancePhotoChecklistItem | undefined => {
+    const normalizedExpectedTime = expectedTime.slice(0, 5);
+    return photoChecklist.find(
+      (item) =>
+        item.attendanceId === currentAttendance?.id &&
+        item.type === imageType &&
+        item.phase === phase &&
+        item.expectedTime.slice(0, 5) === normalizedExpectedTime,
+    );
+  };
 
   useEffect(() => {
     if (queriedAttendance) {
@@ -581,6 +601,7 @@ function InternAttendancePage() {
         ["checkin-personal"]: undefined,
       }));
       void queryClient.invalidateQueries({ queryKey: ["attendances", user?.id, attendanceDate] });
+      void queryClient.invalidateQueries({ queryKey: ["photo-checklist", user?.id, selectedShift?.id, attendanceDate] });
     },
     onError: (error) => {
       const nextMessage = error instanceof Error ? error.message : "Không thể checkin.";
@@ -725,6 +746,7 @@ function InternAttendancePage() {
     phase: AttendanceImagePhase,
     expectedTime: string,
     displayOrder: number,
+    requirementId?: string,
   ) => {
     setFile(slotKey, file);
     if (!file) return;
@@ -737,7 +759,11 @@ function InternAttendancePage() {
         const uploaded = await uploadImage(file);
         persistDraftUrl(slotKey, uploaded.url);
         if (currentAttendance) {
-          const savedImage = await addAttendanceImage(currentAttendance.id, {
+          if (!requirementId) {
+            throw new Error("Moc anh nay chua co trong checklist.");
+          }
+          const payload = {
+            requirementId,
             imageType,
             phase,
             expectedTime,
@@ -750,7 +776,8 @@ function InternAttendancePage() {
             width: uploaded.width,
             height: uploaded.height,
             displayOrder,
-          });
+          };
+          const savedImage = await addAttendanceImageByRequirement(currentAttendance.id, requirementId, payload);
           queryClient.setQueryData<Attendance[]>(["attendances", user?.id, attendanceDate], (current) =>
             current?.map((attendance) =>
               attendance.id === currentAttendance.id
@@ -771,6 +798,7 @@ function InternAttendancePage() {
                 : attendance,
             ),
           );
+          void queryClient.invalidateQueries({ queryKey: ["photo-checklist", user?.id, selectedShift?.id, attendanceDate] });
         }
         setMessage(currentAttendance ? "Đã tự động lưu ảnh theo mốc thời gian." : "Đã lưu nháp ảnh, F5 sẽ không mất.");
         setErrorMessage(null);
@@ -789,6 +817,7 @@ function InternAttendancePage() {
         phase: "DURING_SHIFT" as AttendanceImagePhase,
         expectedTime: slot.time,
         displayOrder: index,
+        requirementId: findSlotRequirement("PERSONAL_TIMEMARK", "DURING_SHIFT", slot.time)?.id,
       })),
       ...groupSlots.map((slot, index) => ({
         key: fileKey("GROUP", "DURING_SHIFT", slot.time),
@@ -796,12 +825,13 @@ function InternAttendancePage() {
         phase: "DURING_SHIFT" as AttendanceImagePhase,
         expectedTime: slot.time,
         displayOrder: index,
+        requirementId: findSlotRequirement("GROUP", "DURING_SHIFT", slot.time)?.id,
       })),
     ].filter((slot) => !savedSlotImage(currentAttendance, slot.imageType, slot.phase, slot.expectedTime));
 
     Array.from(files).slice(0, slotQueue.length).forEach((file, index) => {
       const slot = slotQueue[index];
-      handlePersistedSlotChange(slot.key, file, slot.imageType, slot.phase, slot.expectedTime, slot.displayOrder);
+      handlePersistedSlotChange(slot.key, file, slot.imageType, slot.phase, slot.expectedTime, slot.displayOrder, slot.requirementId);
     });
   };
 
@@ -962,6 +992,7 @@ function InternAttendancePage() {
                 <h3 className="font-semibold">Ảnh TimeMark giữa giờ</h3>
                 {personalSlots.map((slot, index) => {
                   const key = fileKey("PERSONAL_TIMEMARK", "DURING_SHIFT", slot.time);
+                  const requirement = findSlotRequirement("PERSONAL_TIMEMARK", "DURING_SHIFT", slot.time);
                   return (
                     <div key={key} className="rounded-lg border p-3">
                       <ImagePicker
@@ -978,6 +1009,7 @@ function InternAttendancePage() {
                             "DURING_SHIFT",
                             slot.time,
                             index,
+                            requirement?.id,
                           )
                         }
                       />
@@ -991,6 +1023,7 @@ function InternAttendancePage() {
                 {groupSlots.map((slot, index) => {
                   const phase: AttendanceImagePhase = "DURING_SHIFT";
                   const key = fileKey("GROUP", phase, slot.time);
+                  const requirement = findSlotRequirement("GROUP", phase, slot.time);
                   return (
                     <div key={key} className="rounded-lg border p-3">
                       <ImagePicker
@@ -1000,7 +1033,7 @@ function InternAttendancePage() {
                         imageUrl={savedSlotImage(currentAttendance, "GROUP", phase, slot.time)}
                         thumbnailUrl={savedSlotThumbnail(currentAttendance, "GROUP", phase, slot.time)}
                         cachedUrl={getDraft(key) ?? getPreviewDraft(key)}
-                        onChange={(file) => handlePersistedSlotChange(key, file, "GROUP", phase, slot.time, index)}
+                        onChange={(file) => handlePersistedSlotChange(key, file, "GROUP", phase, slot.time, index, requirement?.id)}
                       />
                     </div>
                   );

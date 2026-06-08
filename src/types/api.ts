@@ -77,6 +77,8 @@ export type AttendanceImageType = "PERSONAL_TIMEMARK" | "GROUP";
 
 export type AttendanceImagePhase = "CHECKIN" | "DURING_SHIFT" | "CHECKOUT";
 
+export type AttendancePhotoRequirementStatus = "PENDING" | "SATISFIED" | "SKIPPED";
+
 export type AttendanceImage = {
   id: string;
   attendanceId: string;
@@ -98,6 +100,21 @@ export type AttendanceImage = {
   retentionUntil?: string;
   deletedAt?: string;
   deleteStatus?: string;
+};
+
+export type AttendancePhotoChecklistItem = {
+  id: string;
+  attendanceId: string;
+  userId: string;
+  shiftId: string;
+  attendanceDate: string;
+  expectedTime: string;
+  type: AttendanceImageType;
+  phase: AttendanceImagePhase;
+  status: AttendancePhotoRequirementStatus;
+  imageUrl?: string;
+  reason?: string;
+  note?: string;
 };
 
 export type Attendance = {
