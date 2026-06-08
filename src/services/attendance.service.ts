@@ -39,6 +39,10 @@ export type AttendanceImagePayload = {
   note?: string;
 };
 
+export type AttendancePhotoSkipPayload = {
+  reason: string;
+};
+
 export function getAttendances(userId: string, date: string) {
   return apiRequest<Attendance[]>(`/attendances?userId=${userId}&date=${date}`);
 }
@@ -78,6 +82,13 @@ export function addAttendanceImage(attendanceId: string, payload: AttendanceImag
 export function addAttendanceImageByRequirement(attendanceId: string, requirementId: string, payload: AttendanceImagePayload) {
   return apiRequest<AttendanceImage>(`/attendances/${attendanceId}/requirements/${requirementId}/images`, {
     method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function skipAttendancePhotoRequirement(attendanceId: string, requirementId: string, payload: AttendancePhotoSkipPayload) {
+  return apiRequest<AttendancePhotoChecklistItem>(`/attendances/${attendanceId}/requirements/${requirementId}/skip`, {
+    method: "PATCH",
     body: JSON.stringify(payload),
   });
 }

@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { ErrorState } from "@/components/common/ErrorState";
 import { getShifts } from "@/services/shift.service";
-import { addAttendanceImageByRequirement, checkin, checkout, getAttendances, getPhotoChecklist, saveCheckoutDraft } from "@/services/attendance.service";
+import { addAttendanceImageByRequirement, checkin, checkout, getAttendances, getPhotoChecklist, saveCheckoutDraft, skipAttendancePhotoRequirement } from "@/services/attendance.service";
 import { getUserSchedule } from "@/services/schedule.service";
 import { uploadImage } from "@/services/upload.service";
 import { getCohorts, getCohortStudents } from "@/services/cohort.service";
@@ -578,6 +578,7 @@ function InternAttendancePage() {
   const [allPreviewDraftUrls, setAllPreviewDraftUrls] = useState<Record<string, string>>({});
   const [allPreviewDraftFiles, setAllPreviewDraftFiles] = useState<Record<string, File>>({});
   const [optimisticAttendance, setOptimisticAttendance] = useState<Attendance | null>(null);
+  const [skipReasons, setSkipReasons] = useState<Record<string, string>>({});
   const range = weekRange(attendanceDate);
 
   useEffect(() => {
@@ -970,6 +971,26 @@ function InternAttendancePage() {
   };
 
 
+  const handleSkipGroupRequirement = async (requirement: AttendancePhotoChecklistItem | undefined, reasonKey: string) => {
+    if (!currentAttendance || !requirement) return;
+    const reason = skipReasons[reasonKey]?.trim();
+    if (!reason) {
+      setErrorMessage("Can nhap ly do khi bo qua anh nhom.");
+      return;
+    }
+    try {
+      const skippedRequirement = await skipAttendancePhotoRequirement(currentAttendance.id, requirement.id, { reason });
+      queryClient.setQueryData<AttendancePhotoChecklistItem[]>(["photo-checklist", user?.id, selectedShift?.id, attendanceDate], (current) =>
+        current?.map((item) => (item.id === skippedRequirement.id ? skippedRequirement : item)),
+      );
+      setSkipReasons((current) => ({ ...current, [reasonKey]: "" }));
+      setMessage("Da bo qua anh nhom cho moc nay.");
+      setErrorMessage(null);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Khong the bo qua anh nhom.");
+    }
+  };
+
   const slotHasDraft = (slotKey: SlotKey) => Boolean(files[slotKey] || getDraft(slotKey) || getPreviewDraft(slotKey));
   const slotStatus = (
     imageType: AttendanceImageType,
@@ -1044,11 +1065,32 @@ function InternAttendancePage() {
             status,
             reason: slotReason(requirement, status, slot.description),
             action: (
-              <ChecklistUploadButton
-                disabled={!currentAttendance || photoChecklistQuery.isLoading || !requirement}
-                label={status === "done" ? "Thay anh" : "Upload"}
-                onChange={(file) => handlePersistedSlotChange(key, file, "GROUP", phase, slot.time, index, requirement?.id)}
-              />
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <ChecklistUploadButton
+                  disabled={!currentAttendance || photoChecklistQuery.isLoading || !requirement}
+                  label={status === "done" ? "Thay anh" : "Upload"}
+                  onChange={(file) => handlePersistedSlotChange(key, file, "GROUP", phase, slot.time, index, requirement?.id)}
+                />
+                {status !== "done" && status !== "skipped" && (
+                  <div className="flex min-w-0 gap-2">
+                    <Input
+                      className="h-9 w-44 bg-white"
+                      placeholder="Ly do khong co nhom"
+                      value={skipReasons[key] ?? ""}
+                      onChange={(event) => setSkipReasons((current) => ({ ...current, [key]: event.target.value }))}
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={!currentAttendance || photoChecklistQuery.isLoading || !requirement}
+                      onClick={() => void handleSkipGroupRequirement(requirement, key)}
+                    >
+                      Khong co nhom
+                    </Button>
+                  </div>
+                )}
+              </div>
             ),
           };
         }),
