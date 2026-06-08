@@ -1,17 +1,16 @@
-import { useMemo } from "react";
-import { ArrowLeft, Loader2, Mail } from "lucide-react";
+import { useMemo, useState } from "react";
+import { AlertCircle, ArrowLeft, CheckCircle2, Loader2, Mail, X } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ErrorState } from "@/components/common/ErrorState";
-import { submitDailyReportMail } from "@/services/report-journal.service";
+import { getDailyMailPreview } from "@/services/report-journal.service";
 import { useAuthStore } from "@/store/auth-store";
-import type { Attendance, AttendanceImage } from "@/types/api";
+import type { Attendance, AttendanceImage, DailyMailReadiness } from "@/types/api";
 import { fallbackToFullImage, getFullImageUrl, getImageDisplayUrl } from "@/utils/cloudinary-image";
 
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
 const JOURNAL_REVIEW_STORAGE_KEY = "journal_review_payload";
 
 type UploadedWordDocument = {
@@ -23,7 +22,9 @@ type ReviewPayload = {
   workDate: string;
   content: string;
   referenceLinks: string;
+  sourceReferences?: string;
   attachmentName: string;
+  storedWordFileName?: string;
   uploadedWordDocument?: UploadedWordDocument | null;
   shiftSummary: string;
   timeSummary: string;
@@ -62,46 +63,56 @@ function attendancePreviewImages(attendance: Attendance) {
   return items;
 }
 
-function loadGoogleScript() {
-  return new Promise<void>((resolve, reject) => {
-    if ((window as any).google?.accounts?.oauth2) {
-      resolve();
-      return;
-    }
-    const existingScript = document.querySelector<HTMLScriptElement>('script[src="https://accounts.google.com/gsi/client"]');
-    if (existingScript) {
-      existingScript.addEventListener("load", () => resolve(), { once: true });
-      existingScript.addEventListener("error", () => reject(new Error("Không tải được Google OAuth.")), { once: true });
-      return;
-    }
-    const script = document.createElement("script");
-    script.src = "https://accounts.google.com/gsi/client";
-    script.async = true;
-    script.defer = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Không tải được Google OAuth."));
-    document.head.appendChild(script);
-  });
+
+const DAILY_MAIL_TO = "tuyendungbpns@gmail.com";
+const DAILY_MAIL_CC = "xuandat210425cty@gmail.com";
+const GMAIL_COMPOSE_URL = "https://mail.google.com/mail/";
+
+function imageInstructionLines(payload: ReviewPayload) {
+  const lines = payload.attendances.flatMap((attendance) =>
+    attendancePreviewImages(attendance).map((image) => `- ${attendance.shift.name}: ${image.url}`),
+  );
+  return lines.length > 0 ? lines : ["- Chua co anh trong preview."];
 }
 
-async function requestGmailSendToken() {
-  if (!GOOGLE_CLIENT_ID) throw new Error("Chưa cấu hình VITE_GOOGLE_CLIENT_ID.");
-  await loadGoogleScript();
-  return new Promise<string>((resolve, reject) => {
-    const tokenClient = (window as any).google?.accounts.oauth2?.initTokenClient({
-      client_id: GOOGLE_CLIENT_ID,
-      scope: "https://www.googleapis.com/auth/gmail.send openid email profile",
-      prompt: "consent",
-      callback: (response: { access_token?: string; error?: string }) => {
-        if (response.error || !response.access_token) {
-          reject(new Error("Bạn cần cấp quyền Gmail để gửi mail bằng chính tài khoản của mình."));
-          return;
-        }
-        resolve(response.access_token);
-      },
-    });
-    tokenClient?.requestAccessToken();
+function buildGmailComposeBody(payload: ReviewPayload, readiness: DailyMailReadiness) {
+  const attachmentName = readiness.attachmentName ?? payload.attachmentName;
+  const journalEntry = readiness.journalEntry;
+  return [
+    "Anh/ch\u1ecb vui l\u00f2ng nh\u1eadn nh\u1eadt k\u00fd th\u1ef1c t\u1eadp cu\u1ed1i ng\u00e0y.",
+    "",
+    `H\u1ecd t\u00ean: ${payload.student.fullName || "Ch\u01b0a c\u00f3"}`,
+    `MSSV: ${payload.student.studentCode || "Ch\u01b0a c\u00f3"}`,
+    `L\u1edbp/Tr\u01b0\u1eddng: ${payload.student.studentClass || "Ch\u01b0a c\u00f3"}${payload.student.school ? ` - ${payload.student.school}` : ""}`,
+    `Ng\u00e0y: ${formatDisplayDate(payload.workDate)}`,
+    `Ca l\u00e0m: ${readiness.shiftSummary || payload.shiftSummary}`,
+    `Th\u1eddi gian: ${readiness.workTimeSummary || payload.timeSummary}`,
+    journalEntry ? `B\u00e1o c\u00e1o ng\u00e0y: ${journalEntry.pageCount}/${journalEntry.requiredPages} trang \u01b0\u1edbc t\u00ednh` : "",
+    "",
+    `File Word c\u1ea7n \u0111\u00ednh k\u00e8m th\u1ee7 c\u00f4ng: ${attachmentName}`,
+    "\u1ea2nh \u0111i\u1ec3m danh c\u1ea7n attach r\u1eddi t\u1eebng \u1ea3nh, kh\u00f4ng ZIP. Link tham chi\u1ebfu:",
+    ...imageInstructionLines(payload),
+    "",
+    "T\u00e0i li\u1ec7u tham kh\u1ea3o:",
+    payload.referenceLinks.trim() || "(Kh\u00f4ng c\u00f3)",
+    "",
+    "Ngu\u1ed3n tr\u00edch d\u1eabn:",
+    payload.sourceReferences?.trim() || "(Kh\u00f4ng c\u00f3)",
+    "",
+    "L\u01b0u \u00fd: Gmail compose kh\u00f4ng t\u1ef1 attach file. Vui l\u00f2ng \u0111\u00ednh k\u00e8m file Word v\u00e0 c\u00e1c \u1ea3nh \u0111i\u1ec3m danh tr\u01b0\u1edbc khi b\u1ea5m g\u1eedi.",
+  ].filter(Boolean).join("\n");
+}
+
+function buildGmailComposeUrl(payload: ReviewPayload, readiness: DailyMailReadiness) {
+  const params = new URLSearchParams({
+    view: "cm",
+    fs: "1",
+    to: DAILY_MAIL_TO,
+    cc: DAILY_MAIL_CC,
+    su: readiness.subject,
+    body: buildGmailComposeBody(payload, readiness),
   });
+  return `${GMAIL_COMPOSE_URL}?${params.toString()}`;
 }
 
 export function JournalReviewPage() {
@@ -116,18 +127,35 @@ export function JournalReviewPage() {
       return null;
     }
   }, []);
+  const [readiness, setReadiness] = useState<DailyMailReadiness | null>(null);
+  const [isReadinessOpen, setIsReadinessOpen] = useState(false);
+  const [composeUrl, setComposeUrl] = useState<string | null>(null);
 
-  const submitMutation = useMutation({
+  const readinessMutation = useMutation({
     mutationFn: async () => {
-      if (!currentUser?.id || !payload) throw new Error("Thiếu dữ liệu review để gửi mail.");
-      const gmailToken = await requestGmailSendToken();
-      return submitDailyReportMail(currentUser.id, payload.workDate, gmailToken, payload.uploadedWordDocument);
+      if (!currentUser?.id || !payload) throw new Error("Thieu du lieu review de kiem tra mail.");
+      return getDailyMailPreview(currentUser.id, payload.workDate);
     },
-    onSuccess: () => {
-      sessionStorage.removeItem(JOURNAL_REVIEW_STORAGE_KEY);
-      navigate("/journal");
+    onSuccess: (preview) => {
+      setReadiness(preview);
+      setIsReadinessOpen(true);
     },
   });
+
+  const composeMutation = useMutation({
+    mutationFn: async () => {
+      if (!payload || !readiness?.ready) throw new Error("Con thieu du lieu chuan bi mail.");
+      const url = buildGmailComposeUrl(payload, readiness);
+      setComposeUrl(url);
+      const opened = window.open(url, "_blank", "noopener,noreferrer");
+      if (!opened) {
+        throw new Error("Khong mo duoc Gmail compose. Hay cho phep popup hoac bam link mo thu cong.");
+      }
+      return url;
+    },
+  });
+
+  const mailGateError = readinessMutation.error ?? composeMutation.error;
 
   if (!payload) {
     return (
@@ -152,17 +180,94 @@ export function JournalReviewPage() {
             <ArrowLeft className="h-4 w-4" />
             Quay lại nhật ký
           </Button>
-          <Button type="button" disabled={submitMutation.isPending} onClick={() => submitMutation.mutate()}>
-            {submitMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
-            Xác nhận gửi mail
+          <Button type="button" disabled={readinessMutation.isPending || composeMutation.isPending} onClick={() => readinessMutation.mutate()}>
+            {readinessMutation.isPending || composeMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+            Kiểm tra gửi mail
           </Button>
         </div>
       </div>
 
-      {submitMutation.error && (
+      {mailGateError && (
         <p className="rounded-md bg-red-50 p-3 text-sm text-red-700">
-          {submitMutation.error instanceof Error ? submitMutation.error.message : "Không thể gửi mail cuối ngày."}
+          {mailGateError instanceof Error ? mailGateError.message : "Khong the chuan bi mail cuoi ngay."}
         </p>
+      )}
+      {isReadinessOpen && readiness && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
+          <div className="max-h-[90vh] w-full max-w-3xl overflow-auto rounded-lg bg-white shadow-xl">
+            <div className="flex items-start justify-between gap-4 border-b p-5">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-lg font-semibold">Gate chuan bi mail</h2>
+                  <Badge tone={readiness.ready ? "success" : "warning"}>{readiness.ready ? "Du du lieu" : "Con thieu"}</Badge>
+                </div>
+                <p className="mt-1 text-sm text-muted-foreground">{readiness.subject}</p>
+              </div>
+              <Button type="button" variant="ghost" size="icon" aria-label="Dong" onClick={() => setIsReadinessOpen(false)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="space-y-4 p-5">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-lg border bg-slate-50 p-3">
+                  <p className="text-xs text-muted-foreground">Ca</p>
+                  <p className="mt-1 font-medium">{readiness.attendanceCount}/{readiness.scheduleCount}</p>
+                </div>
+                <div className="rounded-lg border bg-slate-50 p-3">
+                  <p className="text-xs text-muted-foreground">Anh</p>
+                  <p className="mt-1 font-medium">{readiness.satisfiedPhotoCount}/{readiness.requiredPhotoCount}</p>
+                </div>
+                <div className="rounded-lg border bg-slate-50 p-3">
+                  <p className="text-xs text-muted-foreground">File Word</p>
+                  <p className="mt-1 truncate font-medium">{readiness.attachmentName ?? payload.attachmentName}</p>
+                </div>
+              </div>
+
+              {composeMutation.error && (
+                <p className="rounded-md bg-red-50 p-3 text-sm text-red-700">
+                  {composeMutation.error instanceof Error ? composeMutation.error.message : "Khong the gui mail cuoi ngay."}
+                </p>
+              )}
+              {composeUrl && (
+                <a href={composeUrl} target="_blank" rel="noreferrer" className="block rounded-md bg-slate-50 p-3 text-sm font-medium text-slate-900 underline">
+                  Mo Gmail compose thu cong
+                </a>
+              )}
+              <p className="rounded-md bg-amber-50 p-3 text-sm text-amber-800">
+                Gmail chi tu dien To/CC/subject/body. Hay attach file Word va tung anh diem danh truoc khi bam gui.
+              </p>
+
+              <div className="space-y-3">
+                {readiness.checks.map((check) => (
+                  <div key={check.code} className="rounded-lg border p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        {check.ready ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <AlertCircle className="h-4 w-4 text-amber-600" />}
+                        <p className="font-medium">{check.label}</p>
+                      </div>
+                      <Badge tone={check.ready ? "success" : "warning"}>{check.ready ? "OK" : "Thieu"}</Badge>
+                    </div>
+                    {check.detail && <p className="mt-2 text-sm text-muted-foreground">{check.detail}</p>}
+                    {check.missing.length > 0 && (
+                      <ul className="mt-3 space-y-1 text-sm text-red-700">
+                        {check.missing.map((item) => <li key={item}>- {item}</li>)}
+                      </ul>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="flex flex-wrap justify-end gap-3 border-t p-5">
+              <Button type="button" variant="outline" className="bg-white" onClick={() => setIsReadinessOpen(false)}>
+                Dong
+              </Button>
+              <Button type="button" disabled={!readiness.ready || composeMutation.isPending} onClick={() => composeMutation.mutate()}>
+                {composeMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+                Mo Gmail de gui
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
 
       <Card className="bg-white/95 shadow-sm ring-1 ring-slate-200">
@@ -173,7 +278,7 @@ export function JournalReviewPage() {
               <CardDescription>Thông tin sinh viên, ngày, ca làm và khung giờ sẽ được dùng trong mail cuối ngày.</CardDescription>
             </div>
             <Badge tone="muted">
-              {payload.uploadedWordDocument ? "Dùng file Word đã tải lên" : "Hệ thống sẽ đóng gói thành file Word"}
+              {payload.uploadedWordDocument || payload.storedWordFileName ? "Dung file Word da tai len" : "He thong se dong goi thanh file Word"}
             </Badge>
           </div>
         </CardHeader>
@@ -288,6 +393,12 @@ export function JournalReviewPage() {
             <div className="rounded-xl border bg-slate-50 p-4">
               <p className="text-sm font-medium">Tài liệu tham khảo</p>
               <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{payload.referenceLinks.trim()}</p>
+            </div>
+          )}
+          {payload.sourceReferences?.trim() && (
+            <div className="rounded-xl border bg-slate-50 p-4">
+              <p className="text-sm font-medium">Nguon trich dan</p>
+              <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{payload.sourceReferences.trim()}</p>
             </div>
           )}
         </CardContent>

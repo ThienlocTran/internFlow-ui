@@ -77,6 +77,8 @@ export type AttendanceImageType = "PERSONAL_TIMEMARK" | "GROUP";
 
 export type AttendanceImagePhase = "CHECKIN" | "DURING_SHIFT" | "CHECKOUT";
 
+export type AttendancePhotoRequirementStatus = "PENDING" | "SATISFIED" | "SKIPPED";
+
 export type AttendanceImage = {
   id: string;
   attendanceId: string;
@@ -98,6 +100,21 @@ export type AttendanceImage = {
   retentionUntil?: string;
   deletedAt?: string;
   deleteStatus?: string;
+};
+
+export type AttendancePhotoChecklistItem = {
+  id: string;
+  attendanceId: string;
+  userId: string;
+  shiftId: string;
+  attendanceDate: string;
+  expectedTime: string;
+  type: AttendanceImageType;
+  phase: AttendanceImagePhase;
+  status: AttendancePhotoRequirementStatus;
+  imageUrl?: string;
+  reason?: string;
+  note?: string;
 };
 
 export type Attendance = {
@@ -246,6 +263,7 @@ export type ReportEntry = {
   workTimeSummary?: string;
   content?: string;
   referenceLinks?: string;
+  sourceReferences?: string;
   pageCount: number;
   requiredPages: number;
   status: ReportEntryStatus;
@@ -263,6 +281,14 @@ export type ReportRevision = {
   createdAt: string;
 };
 
+export type ReportWordUpload = {
+  entry: ReportEntry;
+  fileName: string;
+  downloadUrl: string;
+  pageCount: number;
+  wordCount: number;
+};
+
 export type ReportProgress = {
   document: ReportDocument;
   entries: ReportEntry[];
@@ -273,6 +299,34 @@ export type DailyReportEntry = {
   entry: ReportEntry;
 };
 
+
+export type DailyMailReadinessItem = {
+  code: string;
+  label: string;
+  ready: boolean;
+  status: string;
+  missing: string[];
+  detail?: string;
+};
+
+export type DailyMailReadiness = {
+  userId: string;
+  workDate: string;
+  ready: boolean;
+  subject: string;
+  attachmentName?: string;
+  shiftSummary?: string;
+  workTimeSummary?: string;
+  scheduleCount: number;
+  attendanceCount: number;
+  requiredPhotoCount: number;
+  satisfiedPhotoCount: number;
+  skippedPhotoCount: number;
+  missingPhotoCount: number;
+  journalEntry?: ReportEntry | null;
+  checks: DailyMailReadinessItem[];
+  photoChecklist: AttendancePhotoChecklistItem[];
+};
 export type MailSubmitResult = {
   to: string;
   cc: string;

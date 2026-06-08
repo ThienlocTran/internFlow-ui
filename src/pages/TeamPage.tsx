@@ -13,7 +13,7 @@ import { getLeaderShiftPeers, getTeamMemberFullDetail } from "@/services/team.se
 import { useAuthStore } from "@/store/auth-store";
 import { fallbackToFullImage, getFullImageUrl, getImageDisplayUrl } from "@/utils/cloudinary-image";
 import { formatDate } from "@/utils/date-format";
-import type { AttendanceAudit, Shift } from "@/types/api";
+import type { Shift } from "@/types/api";
 
 const roleLabels: Record<string, string> = {
   INTERN: "Sinh viên thường",
