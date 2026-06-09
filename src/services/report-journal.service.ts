@@ -3,6 +3,8 @@ import { useAuthStore } from "@/store/auth-store";
 import type { DailyMailReadiness, DailyReportEntry, MailSubmitResult, ReportEntry, ReportProgress, ReportRevision, ReportWordUpload } from "@/types/api";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080/api";
+const MAX_WORD_UPLOAD_BYTES = 10 * 1024 * 1024;
+const WORD_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
 export type SaveReportEntryPayload = {
   userId: string;
@@ -32,12 +34,20 @@ export function getReportRevisions(entryId: string) {
 }
 
 export function uploadReportWord(userId: string, workDate: string, file: File) {
+  validateWordFile(file);
   const formData = new FormData();
   formData.append("file", file);
   return apiRequest<ReportWordUpload>(`/report-journals/entries/word?userId=${userId}&workDate=${workDate}`, {
     method: "POST",
     body: formData,
   });
+}
+
+function validateWordFile(file: File) {
+  if (!file) throw new Error("File Word là bắt buộc.");
+  if (!file.name.toLowerCase().endsWith(".docx")) throw new Error("Chỉ chấp nhận file .docx.");
+  if (file.type && file.type !== WORD_CONTENT_TYPE) throw new Error("Content-Type của file Word không hợp lệ.");
+  if (file.size > MAX_WORD_UPLOAD_BYTES) throw new Error("File Word vượt quá giới hạn 10MB.");
 }
 
 export async function downloadReportWord(userId: string, workDate: string) {

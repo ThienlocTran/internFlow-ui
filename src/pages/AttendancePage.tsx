@@ -297,7 +297,7 @@ function ImagePicker({
       <Input
         className="sr-only"
         type="file"
-        accept="image/*"
+        accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
         onChange={(event) => onChange(event.target.files?.[0])}
       />
     </label>
@@ -351,7 +351,7 @@ function ChecklistUploadButton({
       <Input
         className="sr-only"
         type="file"
-        accept="image/*"
+        accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
         disabled={disabled}
         onChange={(event) => {
           onChange(event.target.files?.[0]);
@@ -1272,7 +1272,7 @@ function InternAttendancePage() {
                     <p className="font-medium">Upload nhiều ảnh giữa ca</p>
                     <p className="mt-1 text-sm text-muted-foreground">Hệ thống map theo thứ tự chọn file: TimeMark giữa ca trước, rồi ảnh nhóm giữa ca.</p>
                   </div>
-                  <Input type="file" multiple accept="image/*" className="max-w-sm bg-white" onChange={(event) => {
+                  <Input type="file" multiple accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" className="max-w-sm bg-white" onChange={(event) => {
                     handleBulkSlotUpload(event.target.files);
                     event.target.value = "";
                   }} />

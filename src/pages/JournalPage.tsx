@@ -386,7 +386,7 @@ export function JournalPage() {
       return;
     }
     if (file.size > 10 * 1024 * 1024) {
-      setWordUpload({ status: "error", message: "File Word vuot qua gioi han 10MB." });
+      setWordUpload({ status: "error", message: "File Word vượt quá giới hạn 10MB." });
       return;
     }
     setWordUpload({ status: "loading" });
