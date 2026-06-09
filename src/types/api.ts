@@ -327,6 +327,46 @@ export type DailyMailReadiness = {
   checks: DailyMailReadinessItem[];
   photoChecklist: AttendancePhotoChecklistItem[];
 };
+
+export type AdminDailyComplianceSummary = {
+  totalStudents: number;
+  registeredStudents: number;
+  attendanceReadyStudents: number;
+  photoReadyStudents: number;
+  journalReadyStudents: number;
+  mailSentStudents: number;
+  compliantStudents: number;
+};
+
+export type AdminDailyComplianceStudent = {
+  student: User;
+  scheduleCount: number;
+  attendanceCount: number;
+  registeredShifts: string[];
+  missingAttendanceShifts: string[];
+  requiredPhotoCount: number;
+  satisfiedPhotoCount: number;
+  skippedPhotoCount: number;
+  missingPhotoCount: number;
+  missingPhotos: string[];
+  scheduleReady: boolean;
+  attendanceReady: boolean;
+  photosReady: boolean;
+  journalReady: boolean;
+  requiredReportPages: number;
+  submittedReportPages: number;
+  missingReportPages: number;
+  journalIssues: string[];
+  mailSent: boolean;
+  mailStatus: string;
+  compliant: boolean;
+};
+
+export type AdminDailyCompliance = {
+  workDate: string;
+  summary: AdminDailyComplianceSummary;
+  students: AdminDailyComplianceStudent[];
+};
 export type MailSubmitResult = {
   to: string;
   cc: string;
