@@ -1,4 +1,4 @@
-import { CalendarDays, Eye, FileText, SlidersHorizontal, UsersRound } from "lucide-react";
+import { CalendarDays, Eye, FileText, SlidersHorizontal } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,11 +9,11 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { ErrorState } from "@/components/common/ErrorState";
 import { getRolePolicies } from "@/services/role-policy.service";
-import { getLeaderShiftPeers, getTeamMemberFullDetail } from "@/services/team.service";
+import { getLeaderShiftCompliance, getLeaderShiftPeers, getTeamMemberFullDetail } from "@/services/team.service";
 import { useAuthStore } from "@/store/auth-store";
 import { fallbackToFullImage, getFullImageUrl, getImageDisplayUrl } from "@/utils/cloudinary-image";
 import { formatDate } from "@/utils/date-format";
-import type { Shift } from "@/types/api";
+import type { AdminShiftComplianceParticipant, Shift } from "@/types/api";
 
 const roleLabels: Record<string, string> = {
   INTERN: "Sinh viên thường",
@@ -26,17 +26,30 @@ function today() {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
-function complianceText(compliance: { missingImages: number; missingReportPages: number } | undefined) {
-  if (!compliance) return "Chua co du lieu";
-  const parts = [];
-  if (compliance.missingImages > 0) parts.push(`thieu ${compliance.missingImages} anh`);
-  if (compliance.missingReportPages > 0) parts.push(`thieu ${compliance.missingReportPages} trang Word`);
-  return parts.length > 0 ? parts.join(" · ") : "Day du";
+function previewList(items: string[], fallback = "Du") {
+  if (items.length === 0) return fallback;
+  const visible = items.slice(0, 2).join(", ");
+  return items.length > 2 ? `${visible} +${items.length - 2}` : visible;
 }
 
-function complianceTone(compliance: { enoughImages: boolean; enoughReportPages: boolean } | undefined) {
-  if (!compliance) return "muted" as const;
-  return compliance.enoughImages && compliance.enoughReportPages ? "success" as const : "warning" as const;
+function mailLabel(row: { mailSent: boolean; mailStatus: string }) {
+  if (row.mailSent) return "Da gui";
+  return row.mailStatus === "FAILED" ? "Loi gui" : "Chua gui";
+}
+
+function attendanceLabel(row: AdminShiftComplianceParticipant) {
+  if (row.checkedOut) return "Da checkout";
+  if (row.checkedIn) return "Dang trong ca";
+  return "Chua check-in";
+}
+
+function timeLabel(value?: string | null) {
+  if (!value) return "Chua co";
+  return new Date(value).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
+}
+
+function StatusBadge({ ready, okLabel = "Du", missingLabel = "Thieu" }: { ready: boolean; okLabel?: string; missingLabel?: string }) {
+  return <Badge tone={ready ? "success" : "warning"}>{ready ? okLabel : missingLabel}</Badge>;
 }
 
 export function TeamPage() {
@@ -62,8 +75,15 @@ export function TeamPage() {
     if (shifts.size === 0) peers.flatMap((peer) => peer.schedules).forEach((schedule) => shifts.set(schedule.shift.id, schedule.shift));
     return [...shifts.values()].sort((a, b) => a.shiftOrder - b.shiftOrder || a.startTime.localeCompare(b.startTime));
   }, [peers, user?.id]);
-  const activeManagedShiftId = selectedManagedShiftId ?? managedShifts[0]?.id ?? null;
-  const selectedShiftPeers = peers.filter((peer) => peer.user.id !== user?.id && peer.schedules.some((schedule) => schedule.shift.id === activeManagedShiftId));
+  const selectedManagedShiftExists = managedShifts.some((shift) => shift.id === selectedManagedShiftId);
+  const activeManagedShiftId = selectedManagedShiftExists ? selectedManagedShiftId : managedShifts[0]?.id ?? null;
+  const leaderShiftComplianceQuery = useQuery({
+    queryKey: ["leader-shift-compliance", user?.id, selectedDate, activeManagedShiftId],
+    queryFn: () => getLeaderShiftCompliance(user!.id, selectedDate, activeManagedShiftId!),
+    enabled: Boolean(user?.role === "TEAM_LEADER" && activeManagedShiftId),
+  });
+  const leaderShiftCompliance = leaderShiftComplianceQuery.data;
+  const shiftParticipants = leaderShiftCompliance?.participants ?? [];
 
   if (isLoading) {
     return (
@@ -203,33 +223,104 @@ export function TeamPage() {
                       </button>
                     ))}
                   </div>
-                  <div className="grid gap-3">
-                  {selectedShiftPeers.map((peer) => (
-                    <div key={peer.user.id} className="rounded-lg border bg-white p-4">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <p className="font-semibold">{peer.user.fullName}</p>
-                          <p className="mt-1 text-sm text-muted-foreground">
-                            {peer.user.studentCode || "Chưa có MSSV"} · {peer.user.studentClass || "Chưa có lớp"}
-                          </p>
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            {peer.schedules.filter((schedule) => schedule.shift.id === activeManagedShiftId).map((schedule) => (
-                              <Badge key={schedule.id} tone="muted">
-                                {schedule.shift.name} {schedule.shift.startTime.slice(0, 5)}-{schedule.shift.endTime.slice(0, 5)}
-                              </Badge>
-                            ))}
-                            <Badge tone={complianceTone(peer.compliance)}>{complianceText(peer.compliance)}</Badge>
+                  {leaderShiftComplianceQuery.isLoading ? (
+                    <div className="flex min-h-32 items-center justify-center rounded-lg border bg-white">
+                      <LoadingSpinner className="h-7 w-7" />
+                    </div>
+                  ) : leaderShiftComplianceQuery.error || !leaderShiftCompliance ? (
+                    <ErrorState message="Khong tai duoc compliance ca cua nhom truong." />
+                  ) : (
+                    <Card className="bg-white">
+                      <CardHeader>
+                        <CardTitle>{leaderShiftCompliance.shift.name} ngay {leaderShiftCompliance.workDate}</CardTitle>
+                        <CardDescription>
+                          {leaderShiftCompliance.shift.startTime.slice(0, 5)}-{leaderShiftCompliance.shift.endTime.slice(0, 5)} - {leaderShiftCompliance.summary.participantCount} nguoi dang ky.
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-4 overflow-x-auto">
+                        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                          <div className="rounded-lg border bg-slate-50 p-4">
+                            <p className="text-sm text-muted-foreground">Slot intern</p>
+                            <p className="mt-1 text-2xl font-semibold">{leaderShiftCompliance.summary.occupiedSlots}/{leaderShiftCompliance.summary.maxParticipants}</p>
+                          </div>
+                          <div className="rounded-lg border bg-slate-50 p-4">
+                            <p className="text-sm text-muted-foreground">Check-in</p>
+                            <p className="mt-1 text-2xl font-semibold">{leaderShiftCompliance.summary.checkedInCount}/{leaderShiftCompliance.summary.participantCount}</p>
+                          </div>
+                          <div className="rounded-lg border bg-slate-50 p-4">
+                            <p className="text-sm text-muted-foreground">Checkout</p>
+                            <p className="mt-1 text-2xl font-semibold">{leaderShiftCompliance.summary.checkedOutCount}/{leaderShiftCompliance.summary.participantCount}</p>
+                          </div>
+                          <div className="rounded-lg border bg-slate-50 p-4">
+                            <p className="text-sm text-muted-foreground">Du anh</p>
+                            <p className="mt-1 text-2xl font-semibold">{leaderShiftCompliance.summary.photoReadyCount}/{leaderShiftCompliance.summary.participantCount}</p>
+                          </div>
+                          <div className="rounded-lg border bg-slate-50 p-4">
+                            <p className="text-sm text-muted-foreground">Hoan tat</p>
+                            <p className="mt-1 text-2xl font-semibold">{leaderShiftCompliance.summary.compliantCount}/{leaderShiftCompliance.summary.participantCount}</p>
                           </div>
                         </div>
-                        <Button size="sm" variant="outline" onClick={() => setSelectedStudentId(peer.user.id)}>
-                          <Eye className="h-4 w-4" />
-                          Xem ảnh & báo cáo
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                  {selectedShiftPeers.length === 0 && <p className="rounded-lg border border-dashed p-5 text-sm text-muted-foreground">Ca này chưa có sinh viên khác đăng ký.</p>}
-                  </div>
+
+                        <table className="w-full min-w-[1080px] text-sm">
+                          <thead>
+                            <tr className="border-b text-left text-muted-foreground">
+                              <th className="py-3 font-medium">Nguoi trong ca</th>
+                              <th className="py-3 font-medium">Slot</th>
+                              <th className="py-3 font-medium">Check-in/out</th>
+                              <th className="py-3 font-medium">Anh</th>
+                              <th className="py-3 font-medium">Nhat ky</th>
+                              <th className="py-3 font-medium">Mail</th>
+                              <th className="py-3 font-medium">Tong</th>
+                              <th className="py-3 font-medium">Chi tiet</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {shiftParticipants.map((row) => (
+                              <tr key={row.user.id} className="border-b align-top last:border-0">
+                                <td className="py-4 pr-4">
+                                  <p className="font-medium">{row.user.fullName}</p>
+                                  <p className="mt-1 text-xs text-muted-foreground">{row.user.studentCode || row.user.email}</p>
+                                  <Badge tone={row.user.role === "TEAM_LEADER" ? "warning" : "muted"} className="mt-2">{row.user.role}</Badge>
+                                </td>
+                                <td className="py-4 pr-4">
+                                  <Badge tone={row.consumesSlot ? "success" : "muted"}>{row.consumesSlot ? "Tinh slot" : "Khong tinh slot"}</Badge>
+                                </td>
+                                <td className="py-4 pr-4">
+                                  <StatusBadge ready={row.attendanceReady} okLabel="Du" missingLabel={row.checkedIn ? "Thieu checkout" : "Chua check-in"} />
+                                  <p className="mt-2 text-xs text-muted-foreground">{attendanceLabel(row)} - {row.attendanceStatus}</p>
+                                  <p className="mt-1 text-xs text-muted-foreground">In {timeLabel(row.checkinTime)} - Out {timeLabel(row.checkoutTime)}</p>
+                                </td>
+                                <td className="py-4 pr-4">
+                                  <StatusBadge ready={row.photosReady} />
+                                  <p className="mt-2 text-xs text-muted-foreground">{row.satisfiedPhotoCount + row.skippedPhotoCount}/{row.requiredPhotoCount} anh</p>
+                                  <p className="mt-1 max-w-56 text-xs text-muted-foreground">{previewList(row.missingPhotos)}</p>
+                                </td>
+                                <td className="py-4 pr-4">
+                                  <StatusBadge ready={row.journalReady} />
+                                  <p className="mt-2 text-xs text-muted-foreground">{row.submittedReportPages}/{row.requiredReportPages} trang</p>
+                                  <p className="mt-1 max-w-56 text-xs text-muted-foreground">{previewList(row.journalIssues)}</p>
+                                </td>
+                                <td className="py-4 pr-4">
+                                  <StatusBadge ready={row.mailSent} okLabel="Da gui" missingLabel={row.mailStatus === "FAILED" ? "Loi" : "Chua gui"} />
+                                  <p className="mt-2 text-xs text-muted-foreground">{mailLabel(row)} - {row.mailStatus}</p>
+                                </td>
+                                <td className="py-4 pr-4">
+                                  <StatusBadge ready={row.compliant} okLabel="Hoan tat" missingLabel="Can bo sung" />
+                                </td>
+                                <td className="py-4">
+                                  <Button size="sm" variant="outline" onClick={() => setSelectedStudentId(row.user.id)}>
+                                    <Eye className="h-4 w-4" />
+                                    Mo
+                                  </Button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                        {shiftParticipants.length === 0 && <p className="rounded-lg border border-dashed p-5 text-sm text-muted-foreground">Ca nay chua co ai dang ky.</p>}
+                      </CardContent>
+                    </Card>
+                  )}
                 </div>
               ) : (
                 <EmptyState
