@@ -367,6 +367,54 @@ export type AdminDailyCompliance = {
   summary: AdminDailyComplianceSummary;
   students: AdminDailyComplianceStudent[];
 };
+
+export type AdminShiftComplianceSummary = {
+  maxParticipants: number;
+  occupiedSlots: number;
+  full: boolean;
+  participantCount: number;
+  internCount: number;
+  leaderCount: number;
+  checkedInCount: number;
+  checkedOutCount: number;
+  attendanceReadyCount: number;
+  photoReadyCount: number;
+  journalReadyCount: number;
+  mailSentCount: number;
+  compliantCount: number;
+};
+
+export type AdminShiftComplianceParticipant = {
+  user: User;
+  consumesSlot: boolean;
+  attendanceStatus: string;
+  checkedIn: boolean;
+  checkedOut: boolean;
+  attendanceReady: boolean;
+  checkinTime?: string | null;
+  checkoutTime?: string | null;
+  requiredPhotoCount: number;
+  satisfiedPhotoCount: number;
+  skippedPhotoCount: number;
+  missingPhotoCount: number;
+  missingPhotos: string[];
+  photosReady: boolean;
+  journalReady: boolean;
+  requiredReportPages: number;
+  submittedReportPages: number;
+  missingReportPages: number;
+  journalIssues: string[];
+  mailSent: boolean;
+  mailStatus: string;
+  compliant: boolean;
+};
+
+export type AdminShiftCompliance = {
+  workDate: string;
+  shift: Shift;
+  summary: AdminShiftComplianceSummary;
+  participants: AdminShiftComplianceParticipant[];
+};
 export type MailSubmitResult = {
   to: string;
   cc: string;

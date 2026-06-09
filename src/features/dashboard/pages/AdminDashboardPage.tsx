@@ -10,8 +10,8 @@ import { DashboardCard } from "@/components/dashboard/DashboardCard";
 import { ErrorState } from "@/components/common/ErrorState";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { useDashboardSummary } from "@/features/dashboard/hooks/use-dashboard-summary";
-import { getAdminDailyCompliance } from "@/services/admin-compliance.service";
-import type { AdminDailyComplianceStudent } from "@/types/api";
+import { getAdminDailyCompliance, getAdminShiftCompliance } from "@/services/admin-compliance.service";
+import type { AdminDailyComplianceStudent, AdminShiftComplianceParticipant } from "@/types/api";
 import { downloadCsv } from "@/utils/export-csv";
 
 function today() {
@@ -24,9 +24,20 @@ function previewList(items: string[], fallback = "Du") {
   return items.length > 2 ? `${visible} +${items.length - 2}` : visible;
 }
 
-function mailLabel(row: AdminDailyComplianceStudent) {
+function mailLabel(row: { mailSent: boolean; mailStatus: string }) {
   if (row.mailSent) return "Da gui";
   return row.mailStatus === "FAILED" ? "Loi gui" : "Chua gui";
+}
+
+function attendanceLabel(row: AdminShiftComplianceParticipant) {
+  if (row.checkedOut) return "Da checkout";
+  if (row.checkedIn) return "Dang trong ca";
+  return "Chua check-in";
+}
+
+function timeLabel(value?: string | null) {
+  if (!value) return "Chua co";
+  return new Date(value).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
 }
 
 function StatusBadge({ ready, okLabel = "Du", missingLabel = "Thieu" }: { ready: boolean; okLabel?: string; missingLabel?: string }) {
@@ -35,11 +46,20 @@ function StatusBadge({ ready, okLabel = "Du", missingLabel = "Thieu" }: { ready:
 
 export function AdminDashboardPage() {
   const [complianceDate, setComplianceDate] = useState(today());
+  const [selectedShiftId, setSelectedShiftId] = useState("");
   const { data, isLoading, error } = useDashboardSummary(true);
+  const shiftOptions = (data?.shifts ?? []).slice().sort((a, b) => a.shiftOrder - b.shiftOrder || a.startTime.localeCompare(b.startTime));
+  const selectedShiftExists = shiftOptions.some((shift) => shift.id === selectedShiftId);
+  const activeShiftId = selectedShiftExists ? selectedShiftId : shiftOptions[0]?.id || "";
   const complianceQuery = useQuery({
     queryKey: ["admin-daily-compliance", complianceDate],
     queryFn: () => getAdminDailyCompliance(complianceDate),
     enabled: Boolean(complianceDate),
+  });
+  const shiftComplianceQuery = useQuery({
+    queryKey: ["admin-shift-compliance", complianceDate, activeShiftId],
+    queryFn: () => getAdminShiftCompliance(complianceDate, activeShiftId),
+    enabled: Boolean(complianceDate && activeShiftId),
   });
 
   if (isLoading) {
@@ -60,6 +80,7 @@ export function AdminDashboardPage() {
   const totalCapacity = data.shifts.reduce((total, shift) => total + shift.maxParticipants, 0);
   const standardPolicy = data.rolePolicies.find((policy) => policy.role === "INTERN");
   const dailyCompliance = complianceQuery.data;
+  const shiftCompliance = shiftComplianceQuery.data;
   const exportUsers = () => {
     downloadCsv(
       "internflow-users.csv",
@@ -206,6 +227,124 @@ export function AdminDashboardPage() {
                 </table>
                 {dailyCompliance.students.length === 0 && (
                   <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">Chua co sinh vien active de hien thi.</div>
+                )}
+              </CardContent>
+            </Card>
+          </>
+        )}
+      </section>
+      <section className="space-y-4">
+        <div className="flex flex-col justify-between gap-3 md:flex-row md:items-end">
+          <div>
+            <h2 className="text-xl font-semibold tracking-normal">Compliance theo ca</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Xem slot, intern/leader, check-in/out, anh, nhat ky va mail theo tung ca.</p>
+          </div>
+          <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row md:items-center">
+            <div className="flex items-center gap-2">
+              <CalendarDays className="h-4 w-4 text-muted-foreground" />
+              <Input type="date" className="md:w-44" value={complianceDate} onChange={(event) => setComplianceDate(event.target.value)} />
+            </div>
+            <select
+              className="h-10 w-full rounded-md border bg-white px-3 text-sm md:w-56"
+              value={activeShiftId}
+              disabled={shiftOptions.length === 0}
+              onChange={(event) => setSelectedShiftId(event.target.value)}
+            >
+              {shiftOptions.map((shift) => (
+                <option key={shift.id} value={shift.id}>{shift.name}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {!activeShiftId ? (
+          <div className="rounded-lg border border-dashed bg-white/90 p-8 text-center text-sm text-muted-foreground">Chua co ca active de hien thi.</div>
+        ) : shiftComplianceQuery.isLoading ? (
+          <div className="flex min-h-40 items-center justify-center rounded-lg border bg-white/90">
+            <LoadingSpinner className="h-6 w-6" />
+          </div>
+        ) : shiftComplianceQuery.error || !shiftCompliance ? (
+          <ErrorState message="Khong tai duoc dashboard compliance theo ca." />
+        ) : (
+          <>
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
+              <DashboardCard label="Slot intern" value={`${shiftCompliance.summary.occupiedSlots}/${shiftCompliance.summary.maxParticipants}`} helper={shiftCompliance.summary.full ? "Da day slot" : "Con slot"} trend="Theo ca" icon={Database} />
+              <DashboardCard label="Intern" value={String(shiftCompliance.summary.internCount)} helper="Tinh slot" trend="Theo ca" icon={UsersRound} />
+              <DashboardCard label="Leader" value={String(shiftCompliance.summary.leaderCount)} helper="Khong tinh slot" trend="Theo ca" icon={ShieldCheck} />
+              <DashboardCard label="Da check-in" value={`${shiftCompliance.summary.checkedInCount}/${shiftCompliance.summary.participantCount}`} helper="Co attendance" trend="Theo ca" icon={CheckCircle2} />
+              <DashboardCard label="Da checkout" value={`${shiftCompliance.summary.checkedOutCount}/${shiftCompliance.summary.participantCount}`} helper="Ket thuc ca" trend="Theo ca" icon={CheckCircle2} />
+              <DashboardCard label="Du anh" value={`${shiftCompliance.summary.photoReadyCount}/${shiftCompliance.summary.participantCount}`} helper="Anh trong ca" trend="Theo ca" icon={Camera} />
+              <DashboardCard label="Hoan tat" value={`${shiftCompliance.summary.compliantCount}/${shiftCompliance.summary.participantCount}`} helper="Tat ca dieu kien" trend="Theo ca" icon={ShieldCheck} />
+            </div>
+
+            <Card className="bg-white/90">
+              <CardHeader>
+                <CardTitle>{shiftCompliance.shift.name} ngay {shiftCompliance.workDate}</CardTitle>
+                <CardDescription>
+                  {shiftCompliance.shift.startTime.slice(0, 5)} - {shiftCompliance.shift.endTime.slice(0, 5)} - {shiftCompliance.summary.participantCount} nguoi dang ky.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="overflow-x-auto">
+                <table className="w-full min-w-[1180px] text-sm">
+                  <thead>
+                    <tr className="border-b text-left text-muted-foreground">
+                      <th className="py-3 font-medium">Nguoi dang ky</th>
+                      <th className="py-3 font-medium">Slot</th>
+                      <th className="py-3 font-medium">Check-in/out</th>
+                      <th className="py-3 font-medium">Anh</th>
+                      <th className="py-3 font-medium">Nhat ky</th>
+                      <th className="py-3 font-medium">Mail</th>
+                      <th className="py-3 font-medium">Tong</th>
+                      <th className="py-3 font-medium">Chi tiet</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {shiftCompliance.participants.map((row) => (
+                      <tr key={row.user.id} className="border-b align-top last:border-0">
+                        <td className="py-4 pr-4">
+                          <p className="font-medium">{row.user.fullName}</p>
+                          <p className="mt-1 text-xs text-muted-foreground">{row.user.studentCode || row.user.email}</p>
+                          <Badge tone={row.user.role === "TEAM_LEADER" ? "warning" : "muted"} className="mt-2">{row.user.role}</Badge>
+                        </td>
+                        <td className="py-4 pr-4">
+                          <Badge tone={row.consumesSlot ? "success" : "muted"}>{row.consumesSlot ? "Tinh slot" : "Khong tinh slot"}</Badge>
+                        </td>
+                        <td className="py-4 pr-4">
+                          <StatusBadge ready={row.attendanceReady} okLabel="Du" missingLabel={row.checkedIn ? "Thieu checkout" : "Chua check-in"} />
+                          <p className="mt-2 text-xs text-muted-foreground">{attendanceLabel(row)} - {row.attendanceStatus}</p>
+                          <p className="mt-1 text-xs text-muted-foreground">In {timeLabel(row.checkinTime)} - Out {timeLabel(row.checkoutTime)}</p>
+                        </td>
+                        <td className="py-4 pr-4">
+                          <StatusBadge ready={row.photosReady} />
+                          <p className="mt-2 text-xs text-muted-foreground">{row.satisfiedPhotoCount + row.skippedPhotoCount}/{row.requiredPhotoCount} anh</p>
+                          <p className="mt-1 max-w-56 text-xs text-muted-foreground">{previewList(row.missingPhotos)}</p>
+                        </td>
+                        <td className="py-4 pr-4">
+                          <StatusBadge ready={row.journalReady} />
+                          <p className="mt-2 text-xs text-muted-foreground">{row.submittedReportPages}/{row.requiredReportPages} trang</p>
+                          <p className="mt-1 max-w-56 text-xs text-muted-foreground">{previewList(row.journalIssues)}</p>
+                        </td>
+                        <td className="py-4 pr-4">
+                          <StatusBadge ready={row.mailSent} okLabel="Da gui" missingLabel={row.mailStatus === "FAILED" ? "Loi" : "Chua gui"} />
+                          <p className="mt-2 text-xs text-muted-foreground">{mailLabel(row)} - {row.mailStatus}</p>
+                        </td>
+                        <td className="py-4 pr-4">
+                          <StatusBadge ready={row.compliant} okLabel="Hoan tat" missingLabel="Can bo sung" />
+                        </td>
+                        <td className="py-4">
+                          <Button asChild size="sm" variant="outline">
+                            <Link to={`/admin/students/${row.user.id}`}>
+                              <Eye className="h-4 w-4" />
+                              Mo
+                            </Link>
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {shiftCompliance.participants.length === 0 && (
+                  <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">Chua co ai dang ky ca nay.</div>
                 )}
               </CardContent>
             </Card>
