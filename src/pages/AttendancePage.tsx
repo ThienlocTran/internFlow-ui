@@ -313,19 +313,19 @@ function checklistBadgeTone(status: ChecklistStatus) {
 function checklistStatusLabel(status: ChecklistStatus) {
   switch (status) {
     case "done":
-      return "Da nop";
+      return "Đã nộp";
     case "draft":
-      return "Da chon";
+      return "Đã chọn";
     case "missing":
-      return "Thieu";
+      return "Thiếu";
     case "skipped":
-      return "Bo qua";
+      return "Bỏ qua";
     case "loading":
-      return "Dang tai";
+      return "Đang tải";
     case "blocked":
-      return "Cho checkin";
+      return "Chờ check-in";
     default:
-      return "Chua den";
+      return "Chưa đến";
   }
 }
 
@@ -381,7 +381,7 @@ function PhotoChecklistPanel({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="font-semibold">Checklist anh theo moc</h3>
-          <p className="mt-1 text-sm text-muted-foreground">Theo doi tung anh can nop trong ca dang chon.</p>
+              <p className="mt-1 text-sm text-muted-foreground">Theo dõi từng ảnh cần nộp trong ca đang chọn.</p>
         </div>
         {loading && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -391,11 +391,11 @@ function PhotoChecklistPanel({
         )}
       </div>
 
-      {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">Khong tai duoc checklist anh.</div>}
+        {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">Không tải được checklist ảnh.</div>}
 
       {!loading && rows.length === 0 && (
         <div className="rounded-md border border-dashed bg-white p-4 text-sm text-muted-foreground">
-          Khong co moc anh cho ca nay.
+            Không có mốc ảnh cho ca này.
         </div>
       )}
 
@@ -895,7 +895,7 @@ function InternAttendancePage() {
         persistDraftUrl(slotKey, uploaded.url);
         if (currentAttendance) {
           if (!requirementId) {
-            throw new Error("Moc anh nay chua co trong checklist.");
+            throw new Error("Mốc ảnh này chưa có trong checklist.");
           }
           const payload = {
             requirementId,
@@ -975,7 +975,7 @@ function InternAttendancePage() {
     if (!currentAttendance || !requirement) return;
     const reason = skipReasons[reasonKey]?.trim();
     if (!reason) {
-      setErrorMessage("Can nhap ly do khi bo qua anh nhom.");
+      setErrorMessage("Cần nhập lý do khi bỏ qua ảnh nhóm.");
       return;
     }
     try {
@@ -984,10 +984,10 @@ function InternAttendancePage() {
         current?.map((item) => (item.id === skippedRequirement.id ? skippedRequirement : item)),
       );
       setSkipReasons((current) => ({ ...current, [reasonKey]: "" }));
-      setMessage("Da bo qua anh nhom cho moc nay.");
+      setMessage("Đã bỏ qua ảnh nhóm cho mốc này.");
       setErrorMessage(null);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Khong the bo qua anh nhom.");
+      setErrorMessage(error instanceof Error ? error.message : "Không thể bỏ qua ảnh nhóm.");
     }
   };
 
@@ -1008,9 +1008,9 @@ function InternAttendancePage() {
     return "missing";
   };
   const slotReason = (requirement: AttendancePhotoChecklistItem | undefined, status: ChecklistStatus, fallback: string) => {
-    if (status === "blocked") return "Checkin truoc khi upload moc nay.";
-    if (status === "loading") return "Dang doi checklist tu backend.";
-    if (status === "missing" && currentAttendance && !requirement) return "Moc nay chua co trong checklist backend.";
+    if (status === "blocked") return "Check-in trước khi upload mốc này.";
+    if (status === "loading") return "Đang đợi checklist từ backend.";
+    if (status === "missing" && currentAttendance && !requirement) return "Mốc này chưa có trong checklist backend.";
     return requirement?.reason ?? fallback;
   };
   const photoChecklistRows: PhotoChecklistRow[] = selectedShift
@@ -1025,7 +1025,7 @@ function InternAttendancePage() {
           action: (
             <ChecklistUploadButton
               disabled={Boolean(currentAttendance)}
-              label={currentAttendance ? "Da checkin" : "Chon anh"}
+              label={currentAttendance ? "Đã check-in" : "Chọn ảnh"}
               onChange={(file) => handleFileChange("checkin-personal", file)}
             />
           ),
@@ -1075,7 +1075,7 @@ function InternAttendancePage() {
                   <div className="flex min-w-0 gap-2">
                     <Input
                       className="h-9 w-44 bg-white"
-                      placeholder="Ly do khong co nhom"
+                      placeholder="Lý do không có nhóm"
                       value={skipReasons[key] ?? ""}
                       onChange={(event) => setSkipReasons((current) => ({ ...current, [key]: event.target.value }))}
                     />
@@ -1086,7 +1086,7 @@ function InternAttendancePage() {
                       disabled={!currentAttendance || photoChecklistQuery.isLoading || !requirement}
                       onClick={() => void handleSkipGroupRequirement(requirement, key)}
                     >
-                      Khong co nhom
+                      Không có nhóm
                     </Button>
                   </div>
                 )}

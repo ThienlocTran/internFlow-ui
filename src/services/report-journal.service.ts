@@ -46,7 +46,7 @@ export async function downloadReportWord(userId: string, workDate: string) {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   });
   if (!response.ok) {
-    throw new Error("Khong the tai file Word da upload.");
+    throw new Error("Không thể tải file Word đã upload.");
   }
   const blob = await response.blob();
   const disposition = response.headers.get("Content-Disposition") ?? "";

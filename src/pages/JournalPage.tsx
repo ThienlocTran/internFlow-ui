@@ -378,7 +378,7 @@ export function JournalPage() {
   // ── Word file upload handler ─────────────────────────────────────────────────
   const handleWordFile = useCallback(async (file: File) => {
     if (!currentUser?.id) {
-      setWordUpload({ status: "error", message: "Ban can dang nhap truoc khi upload Word." });
+    setWordUpload({ status: "error", message: "Bạn cần đăng nhập trước khi upload Word." });
       return;
     }
     if (!file.name.toLowerCase().endsWith(".docx")) {
@@ -406,7 +406,7 @@ export function JournalPage() {
       // Guard against stale DOCX metadata by comparing it with the 210-words/page estimate.
       setWordFilePage(uploaded.pageCount || resolvedPageCount);
       queryClient.invalidateQueries({ queryKey: ["report-progress", currentUser.id] });
-      setNotice("Da upload va luu file Word goc cho nhat ky ngay nay.");
+      setNotice("Đã upload và lưu file Word gốc cho nhật ký ngày này.");
     } catch (err) {
       setWordUpload({
         status: "error",
@@ -440,7 +440,7 @@ export function JournalPage() {
       link.click();
       URL.revokeObjectURL(url);
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Khong the tai file Word.");
+      setNotice(error instanceof Error ? error.message : "Không thể tải file Word.");
     }
   };
 

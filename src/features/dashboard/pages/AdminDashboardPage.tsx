@@ -25,22 +25,22 @@ function previewList(items: string[], fallback = "Du") {
 }
 
 function mailLabel(row: { mailSent: boolean; mailStatus: string }) {
-  if (row.mailSent) return "Da gui";
-  return row.mailStatus === "FAILED" ? "Loi gui" : "Chua gui";
+  if (row.mailSent) return "Đã gửi";
+  return row.mailStatus === "FAILED" ? "Lỗi gửi" : "Chưa gửi";
 }
 
 function attendanceLabel(row: AdminShiftComplianceParticipant) {
-  if (row.checkedOut) return "Da checkout";
-  if (row.checkedIn) return "Dang trong ca";
-  return "Chua check-in";
+  if (row.checkedOut) return "Đã checkout";
+  if (row.checkedIn) return "Đang trong ca";
+  return "Chưa check-in";
 }
 
 function timeLabel(value?: string | null) {
-  if (!value) return "Chua co";
+  if (!value) return "Chưa có";
   return new Date(value).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
 }
 
-function StatusBadge({ ready, okLabel = "Du", missingLabel = "Thieu" }: { ready: boolean; okLabel?: string; missingLabel?: string }) {
+function StatusBadge({ ready, okLabel = "Đủ", missingLabel = "Thiếu" }: { ready: boolean; okLabel?: string; missingLabel?: string }) {
   return <Badge tone={ready ? "success" : "warning"}>{ready ? okLabel : missingLabel}</Badge>;
 }
 
@@ -127,14 +127,14 @@ export function AdminDashboardPage() {
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <DashboardCard label="Tong nguoi dung" value={String(data.users.length)} helper="Tat ca tai khoan" trend="Hoat dong" icon={UsersRound} />
         <DashboardCard label="Sinh vien thuc tap" value={String(internshipUsers)} helper="Role INTERN" trend="Co quota" icon={UsersRound} />
-        <DashboardCard label="Nhom truong" value={String(leaders)} helper="Quan ly nhom" trend="Khong quota" icon={ShieldCheck} />
-        <DashboardCard label="Suc chua/ngay" value={String(totalCapacity)} helper="Tong suc chua ca" trend="9 ban/ca" icon={Database} />
+        <DashboardCard label="Nhóm trưởng" value={String(leaders)} helper="Quản lý nhóm" trend="Không quota" icon={ShieldCheck} />
+        <DashboardCard label="Sức chứa/ngày" value={String(totalCapacity)} helper="Tổng sức chứa ca" trend="9 bạn/ca" icon={Database} />
       </section>
       <section className="space-y-4">
         <div className="flex flex-col justify-between gap-3 md:flex-row md:items-end">
           <div>
             <h2 className="text-xl font-semibold tracking-normal">Compliance theo ngay</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Kiem tra dang ky, diem danh, anh, nhat ky va mail cua tung sinh vien.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Kiểm tra đăng ký, điểm danh, ảnh, nhật ký và mail của từng sinh viên.</p>
           </div>
           <div className="flex w-full items-center gap-2 md:w-auto">
             <CalendarDays className="h-4 w-4 text-muted-foreground" />
@@ -147,23 +147,23 @@ export function AdminDashboardPage() {
             <LoadingSpinner className="h-6 w-6" />
           </div>
         ) : complianceQuery.error || !dailyCompliance ? (
-          <ErrorState message="Khong tai duoc dashboard compliance theo ngay." />
+          <ErrorState message="Không tải được dashboard compliance theo ngày." />
         ) : (
           <>
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
-              <DashboardCard label="Co dang ky" value={`${dailyCompliance.summary.registeredStudents}/${dailyCompliance.summary.totalStudents}`} helper="Sinh vien co ca" trend="Theo ngay" icon={CalendarDays} />
-              <DashboardCard label="Du diem danh" value={`${dailyCompliance.summary.attendanceReadyStudents}/${dailyCompliance.summary.totalStudents}`} helper="Khong thieu ca" trend="Theo ngay" icon={CheckCircle2} />
-              <DashboardCard label="Du anh" value={`${dailyCompliance.summary.photoReadyStudents}/${dailyCompliance.summary.totalStudents}`} helper="Dung moc anh" trend="Theo ngay" icon={Camera} />
-              <DashboardCard label="Du nhat ky" value={`${dailyCompliance.summary.journalReadyStudents}/${dailyCompliance.summary.totalStudents}`} helper="Trang va nguon" trend="Theo ngay" icon={NotebookText} />
-              <DashboardCard label="Da gui mail" value={`${dailyCompliance.summary.mailSentStudents}/${dailyCompliance.summary.totalStudents}`} helper="SENT/confirmed" trend="Theo ngay" icon={Mail} />
-              <DashboardCard label="Hoan tat" value={`${dailyCompliance.summary.compliantStudents}/${dailyCompliance.summary.totalStudents}`} helper="Tat ca dieu kien" trend="Theo ngay" icon={ShieldCheck} />
-              <DashboardCard label="Can bo sung" value={String(dailyCompliance.summary.totalStudents - dailyCompliance.summary.compliantStudents)} helper="Con thieu muc" trend="Theo ngay" icon={AlertTriangle} />
+              <DashboardCard label="Có đăng ký" value={`${dailyCompliance.summary.registeredStudents}/${dailyCompliance.summary.totalStudents}`} helper="Sinh viên có ca" trend="Theo ngày" icon={CalendarDays} />
+              <DashboardCard label="Đủ điểm danh" value={`${dailyCompliance.summary.attendanceReadyStudents}/${dailyCompliance.summary.totalStudents}`} helper="Không thiếu ca" trend="Theo ngày" icon={CheckCircle2} />
+              <DashboardCard label="Đủ ảnh" value={`${dailyCompliance.summary.photoReadyStudents}/${dailyCompliance.summary.totalStudents}`} helper="Đúng mốc ảnh" trend="Theo ngày" icon={Camera} />
+              <DashboardCard label="Đủ nhật ký" value={`${dailyCompliance.summary.journalReadyStudents}/${dailyCompliance.summary.totalStudents}`} helper="Trang và nguồn" trend="Theo ngày" icon={NotebookText} />
+              <DashboardCard label="Đã gửi mail" value={`${dailyCompliance.summary.mailSentStudents}/${dailyCompliance.summary.totalStudents}`} helper="SENT/confirmed" trend="Theo ngày" icon={Mail} />
+              <DashboardCard label="Hoàn tất" value={`${dailyCompliance.summary.compliantStudents}/${dailyCompliance.summary.totalStudents}`} helper="Tất cả điều kiện" trend="Theo ngày" icon={ShieldCheck} />
+              <DashboardCard label="Cần bổ sung" value={String(dailyCompliance.summary.totalStudents - dailyCompliance.summary.compliantStudents)} helper="Còn thiếu mục" trend="Theo ngày" icon={AlertTriangle} />
             </div>
 
             <Card className="bg-white/90">
               <CardHeader>
                 <CardTitle>Trang thai sinh vien ngay {dailyCompliance.workDate}</CardTitle>
-                <CardDescription>MVP bang: tap trung vao ai thieu gi, khong bieu do nang cao.</CardDescription>
+                <CardDescription>MVP bảng: tập trung vào ai thiếu gì, không biểu đồ nâng cao.</CardDescription>
               </CardHeader>
               <CardContent className="overflow-x-auto">
                 <table className="w-full min-w-[1120px] text-sm">
@@ -189,7 +189,7 @@ export function AdminDashboardPage() {
                         </td>
                         <td className="py-4 pr-4">
                           <StatusBadge ready={row.scheduleReady} />
-                          <p className="mt-2 max-w-40 text-xs text-muted-foreground">{previewList(row.registeredShifts, "Chua dang ky")}</p>
+                          <p className="mt-2 max-w-40 text-xs text-muted-foreground">{previewList(row.registeredShifts, "Chưa đăng ký")}</p>
                         </td>
                         <td className="py-4 pr-4">
                           <StatusBadge ready={row.attendanceReady} />
@@ -207,11 +207,11 @@ export function AdminDashboardPage() {
                           <p className="mt-1 max-w-56 text-xs text-muted-foreground">{previewList(row.journalIssues)}</p>
                         </td>
                         <td className="py-4 pr-4">
-                          <StatusBadge ready={row.mailSent} okLabel="Da gui" missingLabel={row.mailStatus === "FAILED" ? "Loi" : "Chua gui"} />
+                          <StatusBadge ready={row.mailSent} okLabel="Đã gửi" missingLabel={row.mailStatus === "FAILED" ? "Lỗi" : "Chưa gửi"} />
                           <p className="mt-2 text-xs text-muted-foreground">{mailLabel(row)} - {row.mailStatus}</p>
                         </td>
                         <td className="py-4 pr-4">
-                          <StatusBadge ready={row.compliant} okLabel="Hoan tat" missingLabel="Can bo sung" />
+                          <StatusBadge ready={row.compliant} okLabel="Hoàn tất" missingLabel="Cần bổ sung" />
                         </td>
                         <td className="py-4">
                           <Button asChild size="sm" variant="outline">
@@ -226,7 +226,7 @@ export function AdminDashboardPage() {
                   </tbody>
                 </table>
                 {dailyCompliance.students.length === 0 && (
-                  <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">Chua co sinh vien active de hien thi.</div>
+                  <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">Chưa có sinh viên active để hiển thị.</div>
                 )}
               </CardContent>
             </Card>
@@ -258,37 +258,37 @@ export function AdminDashboardPage() {
         </div>
 
         {!activeShiftId ? (
-          <div className="rounded-lg border border-dashed bg-white/90 p-8 text-center text-sm text-muted-foreground">Chua co ca active de hien thi.</div>
+          <div className="rounded-lg border border-dashed bg-white/90 p-8 text-center text-sm text-muted-foreground">Chưa có ca active để hiển thị.</div>
         ) : shiftComplianceQuery.isLoading ? (
           <div className="flex min-h-40 items-center justify-center rounded-lg border bg-white/90">
             <LoadingSpinner className="h-6 w-6" />
           </div>
         ) : shiftComplianceQuery.error || !shiftCompliance ? (
-          <ErrorState message="Khong tai duoc dashboard compliance theo ca." />
+          <ErrorState message="Không tải được dashboard compliance theo ca." />
         ) : (
           <>
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
-              <DashboardCard label="Slot intern" value={`${shiftCompliance.summary.occupiedSlots}/${shiftCompliance.summary.maxParticipants}`} helper={shiftCompliance.summary.full ? "Da day slot" : "Con slot"} trend="Theo ca" icon={Database} />
-              <DashboardCard label="Intern" value={String(shiftCompliance.summary.internCount)} helper="Tinh slot" trend="Theo ca" icon={UsersRound} />
-              <DashboardCard label="Leader" value={String(shiftCompliance.summary.leaderCount)} helper="Khong tinh slot" trend="Theo ca" icon={ShieldCheck} />
-              <DashboardCard label="Da check-in" value={`${shiftCompliance.summary.checkedInCount}/${shiftCompliance.summary.participantCount}`} helper="Co attendance" trend="Theo ca" icon={CheckCircle2} />
-              <DashboardCard label="Da checkout" value={`${shiftCompliance.summary.checkedOutCount}/${shiftCompliance.summary.participantCount}`} helper="Ket thuc ca" trend="Theo ca" icon={CheckCircle2} />
-              <DashboardCard label="Du anh" value={`${shiftCompliance.summary.photoReadyCount}/${shiftCompliance.summary.participantCount}`} helper="Anh trong ca" trend="Theo ca" icon={Camera} />
-              <DashboardCard label="Hoan tat" value={`${shiftCompliance.summary.compliantCount}/${shiftCompliance.summary.participantCount}`} helper="Tat ca dieu kien" trend="Theo ca" icon={ShieldCheck} />
+              <DashboardCard label="Slot intern" value={`${shiftCompliance.summary.occupiedSlots}/${shiftCompliance.summary.maxParticipants}`} helper={shiftCompliance.summary.full ? "Đã đầy slot" : "Còn slot"} trend="Theo ca" icon={Database} />
+              <DashboardCard label="Intern" value={String(shiftCompliance.summary.internCount)} helper="Tính slot" trend="Theo ca" icon={UsersRound} />
+              <DashboardCard label="Leader" value={String(shiftCompliance.summary.leaderCount)} helper="Không tính slot" trend="Theo ca" icon={ShieldCheck} />
+              <DashboardCard label="Đã check-in" value={`${shiftCompliance.summary.checkedInCount}/${shiftCompliance.summary.participantCount}`} helper="Có attendance" trend="Theo ca" icon={CheckCircle2} />
+              <DashboardCard label="Đã checkout" value={`${shiftCompliance.summary.checkedOutCount}/${shiftCompliance.summary.participantCount}`} helper="Kết thúc ca" trend="Theo ca" icon={CheckCircle2} />
+              <DashboardCard label="Đủ ảnh" value={`${shiftCompliance.summary.photoReadyCount}/${shiftCompliance.summary.participantCount}`} helper="Ảnh trong ca" trend="Theo ca" icon={Camera} />
+              <DashboardCard label="Hoàn tất" value={`${shiftCompliance.summary.compliantCount}/${shiftCompliance.summary.participantCount}`} helper="Tất cả điều kiện" trend="Theo ca" icon={ShieldCheck} />
             </div>
 
             <Card className="bg-white/90">
               <CardHeader>
                 <CardTitle>{shiftCompliance.shift.name} ngay {shiftCompliance.workDate}</CardTitle>
                 <CardDescription>
-                  {shiftCompliance.shift.startTime.slice(0, 5)} - {shiftCompliance.shift.endTime.slice(0, 5)} - {shiftCompliance.summary.participantCount} nguoi dang ky.
+                  {shiftCompliance.shift.startTime.slice(0, 5)} - {shiftCompliance.shift.endTime.slice(0, 5)} - {shiftCompliance.summary.participantCount} người đăng ký.
                 </CardDescription>
               </CardHeader>
               <CardContent className="overflow-x-auto">
                 <table className="w-full min-w-[1180px] text-sm">
                   <thead>
                     <tr className="border-b text-left text-muted-foreground">
-                      <th className="py-3 font-medium">Nguoi dang ky</th>
+                      <th className="py-3 font-medium">Người đăng ký</th>
                       <th className="py-3 font-medium">Slot</th>
                       <th className="py-3 font-medium">Check-in/out</th>
                       <th className="py-3 font-medium">Anh</th>
@@ -307,10 +307,10 @@ export function AdminDashboardPage() {
                           <Badge tone={row.user.role === "TEAM_LEADER" ? "warning" : "muted"} className="mt-2">{row.user.role}</Badge>
                         </td>
                         <td className="py-4 pr-4">
-                          <Badge tone={row.consumesSlot ? "success" : "muted"}>{row.consumesSlot ? "Tinh slot" : "Khong tinh slot"}</Badge>
+                          <Badge tone={row.consumesSlot ? "success" : "muted"}>{row.consumesSlot ? "Tính slot" : "Không tính slot"}</Badge>
                         </td>
                         <td className="py-4 pr-4">
-                          <StatusBadge ready={row.attendanceReady} okLabel="Du" missingLabel={row.checkedIn ? "Thieu checkout" : "Chua check-in"} />
+                          <StatusBadge ready={row.attendanceReady} okLabel="Đủ" missingLabel={row.checkedIn ? "Thiếu checkout" : "Chưa check-in"} />
                           <p className="mt-2 text-xs text-muted-foreground">{attendanceLabel(row)} - {row.attendanceStatus}</p>
                           <p className="mt-1 text-xs text-muted-foreground">In {timeLabel(row.checkinTime)} - Out {timeLabel(row.checkoutTime)}</p>
                         </td>
@@ -325,11 +325,11 @@ export function AdminDashboardPage() {
                           <p className="mt-1 max-w-56 text-xs text-muted-foreground">{previewList(row.journalIssues)}</p>
                         </td>
                         <td className="py-4 pr-4">
-                          <StatusBadge ready={row.mailSent} okLabel="Da gui" missingLabel={row.mailStatus === "FAILED" ? "Loi" : "Chua gui"} />
+                          <StatusBadge ready={row.mailSent} okLabel="Đã gửi" missingLabel={row.mailStatus === "FAILED" ? "Lỗi" : "Chưa gửi"} />
                           <p className="mt-2 text-xs text-muted-foreground">{mailLabel(row)} - {row.mailStatus}</p>
                         </td>
                         <td className="py-4 pr-4">
-                          <StatusBadge ready={row.compliant} okLabel="Hoan tat" missingLabel="Can bo sung" />
+                          <StatusBadge ready={row.compliant} okLabel="Hoàn tất" missingLabel="Cần bổ sung" />
                         </td>
                         <td className="py-4">
                           <Button asChild size="sm" variant="outline">
@@ -344,7 +344,7 @@ export function AdminDashboardPage() {
                   </tbody>
                 </table>
                 {shiftCompliance.participants.length === 0 && (
-                  <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">Chua co ai dang ky ca nay.</div>
+                  <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">Chưa có ai đăng ký ca này.</div>
                 )}
               </CardContent>
             </Card>

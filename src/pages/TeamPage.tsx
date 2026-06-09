@@ -33,22 +33,22 @@ function previewList(items: string[], fallback = "Du") {
 }
 
 function mailLabel(row: { mailSent: boolean; mailStatus: string }) {
-  if (row.mailSent) return "Da gui";
-  return row.mailStatus === "FAILED" ? "Loi gui" : "Chua gui";
+  if (row.mailSent) return "Đã gửi";
+  return row.mailStatus === "FAILED" ? "Lỗi gửi" : "Chưa gửi";
 }
 
 function attendanceLabel(row: AdminShiftComplianceParticipant) {
-  if (row.checkedOut) return "Da checkout";
-  if (row.checkedIn) return "Dang trong ca";
-  return "Chua check-in";
+  if (row.checkedOut) return "Đã checkout";
+  if (row.checkedIn) return "Đang trong ca";
+  return "Chưa check-in";
 }
 
 function timeLabel(value?: string | null) {
-  if (!value) return "Chua co";
+  if (!value) return "Chưa có";
   return new Date(value).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
 }
 
-function StatusBadge({ ready, okLabel = "Du", missingLabel = "Thieu" }: { ready: boolean; okLabel?: string; missingLabel?: string }) {
+function StatusBadge({ ready, okLabel = "Đủ", missingLabel = "Thiếu" }: { ready: boolean; okLabel?: string; missingLabel?: string }) {
   return <Badge tone={ready ? "success" : "warning"}>{ready ? okLabel : missingLabel}</Badge>;
 }
 
@@ -228,13 +228,13 @@ export function TeamPage() {
                       <LoadingSpinner className="h-7 w-7" />
                     </div>
                   ) : leaderShiftComplianceQuery.error || !leaderShiftCompliance ? (
-                    <ErrorState message="Khong tai duoc compliance ca cua nhom truong." />
+                    <ErrorState message="Không tải được compliance ca của nhóm trưởng." />
                   ) : (
                     <Card className="bg-white">
                       <CardHeader>
                         <CardTitle>{leaderShiftCompliance.shift.name} ngay {leaderShiftCompliance.workDate}</CardTitle>
                         <CardDescription>
-                          {leaderShiftCompliance.shift.startTime.slice(0, 5)}-{leaderShiftCompliance.shift.endTime.slice(0, 5)} - {leaderShiftCompliance.summary.participantCount} nguoi dang ky.
+                          {leaderShiftCompliance.shift.startTime.slice(0, 5)}-{leaderShiftCompliance.shift.endTime.slice(0, 5)} - {leaderShiftCompliance.summary.participantCount} người đăng ký.
                         </CardDescription>
                       </CardHeader>
                       <CardContent className="space-y-4 overflow-x-auto">
@@ -252,11 +252,11 @@ export function TeamPage() {
                             <p className="mt-1 text-2xl font-semibold">{leaderShiftCompliance.summary.checkedOutCount}/{leaderShiftCompliance.summary.participantCount}</p>
                           </div>
                           <div className="rounded-lg border bg-slate-50 p-4">
-                            <p className="text-sm text-muted-foreground">Du anh</p>
+                            <p className="text-sm text-muted-foreground">Đủ ảnh</p>
                             <p className="mt-1 text-2xl font-semibold">{leaderShiftCompliance.summary.photoReadyCount}/{leaderShiftCompliance.summary.participantCount}</p>
                           </div>
                           <div className="rounded-lg border bg-slate-50 p-4">
-                            <p className="text-sm text-muted-foreground">Hoan tat</p>
+                            <p className="text-sm text-muted-foreground">Hoàn tất</p>
                             <p className="mt-1 text-2xl font-semibold">{leaderShiftCompliance.summary.compliantCount}/{leaderShiftCompliance.summary.participantCount}</p>
                           </div>
                         </div>
@@ -283,10 +283,10 @@ export function TeamPage() {
                                   <Badge tone={row.user.role === "TEAM_LEADER" ? "warning" : "muted"} className="mt-2">{row.user.role}</Badge>
                                 </td>
                                 <td className="py-4 pr-4">
-                                  <Badge tone={row.consumesSlot ? "success" : "muted"}>{row.consumesSlot ? "Tinh slot" : "Khong tinh slot"}</Badge>
+                                  <Badge tone={row.consumesSlot ? "success" : "muted"}>{row.consumesSlot ? "Tính slot" : "Không tính slot"}</Badge>
                                 </td>
                                 <td className="py-4 pr-4">
-                                  <StatusBadge ready={row.attendanceReady} okLabel="Du" missingLabel={row.checkedIn ? "Thieu checkout" : "Chua check-in"} />
+                                  <StatusBadge ready={row.attendanceReady} okLabel="Đủ" missingLabel={row.checkedIn ? "Thiếu checkout" : "Chưa check-in"} />
                                   <p className="mt-2 text-xs text-muted-foreground">{attendanceLabel(row)} - {row.attendanceStatus}</p>
                                   <p className="mt-1 text-xs text-muted-foreground">In {timeLabel(row.checkinTime)} - Out {timeLabel(row.checkoutTime)}</p>
                                 </td>
@@ -301,11 +301,11 @@ export function TeamPage() {
                                   <p className="mt-1 max-w-56 text-xs text-muted-foreground">{previewList(row.journalIssues)}</p>
                                 </td>
                                 <td className="py-4 pr-4">
-                                  <StatusBadge ready={row.mailSent} okLabel="Da gui" missingLabel={row.mailStatus === "FAILED" ? "Loi" : "Chua gui"} />
+                                  <StatusBadge ready={row.mailSent} okLabel="Đã gửi" missingLabel={row.mailStatus === "FAILED" ? "Lỗi" : "Chưa gửi"} />
                                   <p className="mt-2 text-xs text-muted-foreground">{mailLabel(row)} - {row.mailStatus}</p>
                                 </td>
                                 <td className="py-4 pr-4">
-                                  <StatusBadge ready={row.compliant} okLabel="Hoan tat" missingLabel="Can bo sung" />
+                                  <StatusBadge ready={row.compliant} okLabel="Hoàn tất" missingLabel="Cần bổ sung" />
                                 </td>
                                 <td className="py-4">
                                   <Button size="sm" variant="outline" onClick={() => setSelectedStudentId(row.user.id)}>
@@ -317,7 +317,7 @@ export function TeamPage() {
                             ))}
                           </tbody>
                         </table>
-                        {shiftParticipants.length === 0 && <p className="rounded-lg border border-dashed p-5 text-sm text-muted-foreground">Ca nay chua co ai dang ky.</p>}
+                        {shiftParticipants.length === 0 && <p className="rounded-lg border border-dashed p-5 text-sm text-muted-foreground">Ca này chưa có ai đăng ký.</p>}
                       </CardContent>
                     </Card>
                   )}

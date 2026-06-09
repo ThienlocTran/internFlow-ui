@@ -61,7 +61,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}) 
 
     if (response.status === 401) {
       useAuthStore.getState().logout();
-      throw new Error("Phiên đăng nhập đã hết hạn");
+      throw new Error("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
     }
 
     let payload: ApiResponse<T> | null = null;
@@ -75,8 +75,8 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}) 
       throw new Error(
         payload?.message ||
           (response.status >= 500
-            ? "M?y ch? ?ang g?p s? c?, vui l?ng th? l?i sau v?i gi?y."
-            : "Y?u c?u ch?a th? x? l?, vui l?ng ki?m tra l?i th?ng tin."),
+            ? "Máy chủ đang gặp sự cố. Vui lòng thử lại sau vài giây."
+            : "Yêu cầu chưa thể xử lý. Vui lòng kiểm tra lại thông tin."),
       );
     }
 
@@ -84,7 +84,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}) 
   } catch (error) {
     cleanup();
     if (error instanceof TypeError) {
-      throw new Error("Kh?ng k?t n?i ???c t?i m?y ch?. Vui l?ng ki?m tra m?ng v? th? l?i.");
+      throw new Error("Không kết nối được tới máy chủ. Vui lòng kiểm tra mạng và thử lại.");
     }
     throw error;
   }

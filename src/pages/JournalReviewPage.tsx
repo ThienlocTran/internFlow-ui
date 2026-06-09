@@ -72,7 +72,7 @@ function imageInstructionLines(payload: ReviewPayload) {
   const lines = payload.attendances.flatMap((attendance) =>
     attendancePreviewImages(attendance).map((image) => `- ${attendance.shift.name}: ${image.url}`),
   );
-  return lines.length > 0 ? lines : ["- Chua co anh trong preview."];
+  return lines.length > 0 ? lines : ["- Chưa có ảnh trong preview."];
 }
 
 function buildGmailComposeBody(payload: ReviewPayload, readiness: DailyMailReadiness) {
@@ -133,7 +133,7 @@ export function JournalReviewPage() {
 
   const readinessMutation = useMutation({
     mutationFn: async () => {
-      if (!currentUser?.id || !payload) throw new Error("Thieu du lieu review de kiem tra mail.");
+  if (!currentUser?.id || !payload) throw new Error("Thiếu dữ liệu review để kiểm tra mail.");
       return getDailyMailPreview(currentUser.id, payload.workDate);
     },
     onSuccess: (preview) => {
@@ -144,12 +144,12 @@ export function JournalReviewPage() {
 
   const composeMutation = useMutation({
     mutationFn: async () => {
-      if (!payload || !readiness?.ready) throw new Error("Con thieu du lieu chuan bi mail.");
+  if (!payload || !readiness?.ready) throw new Error("Còn thiếu dữ liệu chuẩn bị mail.");
       const url = buildGmailComposeUrl(payload, readiness);
       setComposeUrl(url);
       const opened = window.open(url, "_blank", "noopener,noreferrer");
       if (!opened) {
-        throw new Error("Khong mo duoc Gmail compose. Hay cho phep popup hoac bam link mo thu cong.");
+    throw new Error("Không mở được Gmail compose. Hãy cho phép popup hoặc bấm link mở thủ công.");
       }
       return url;
     },
@@ -189,7 +189,7 @@ export function JournalReviewPage() {
 
       {mailGateError && (
         <p className="rounded-md bg-red-50 p-3 text-sm text-red-700">
-          {mailGateError instanceof Error ? mailGateError.message : "Khong the chuan bi mail cuoi ngay."}
+              {mailGateError instanceof Error ? mailGateError.message : "Không thể chuẩn bị mail cuối ngày."}
         </p>
       )}
       {isReadinessOpen && readiness && (
@@ -198,8 +198,8 @@ export function JournalReviewPage() {
             <div className="flex items-start justify-between gap-4 border-b p-5">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-lg font-semibold">Gate chuan bi mail</h2>
-                  <Badge tone={readiness.ready ? "success" : "warning"}>{readiness.ready ? "Du du lieu" : "Con thieu"}</Badge>
+          <h2 className="text-lg font-semibold">Gate chuẩn bị mail</h2>
+                <Badge tone={readiness.ready ? "success" : "warning"}>{readiness.ready ? "Đủ dữ liệu" : "Còn thiếu"}</Badge>
                 </div>
                 <p className="mt-1 text-sm text-muted-foreground">{readiness.subject}</p>
               </div>
@@ -225,7 +225,7 @@ export function JournalReviewPage() {
 
               {composeMutation.error && (
                 <p className="rounded-md bg-red-50 p-3 text-sm text-red-700">
-                  {composeMutation.error instanceof Error ? composeMutation.error.message : "Khong the gui mail cuoi ngay."}
+              {composeMutation.error instanceof Error ? composeMutation.error.message : "Không thể gửi mail cuối ngày."}
                 </p>
               )}
               {composeUrl && (
@@ -234,7 +234,7 @@ export function JournalReviewPage() {
                 </a>
               )}
               <p className="rounded-md bg-amber-50 p-3 text-sm text-amber-800">
-                Gmail chi tu dien To/CC/subject/body. Hay attach file Word va tung anh diem danh truoc khi bam gui.
+              Gmail chỉ tự điền To/CC/subject/body. Hãy attach file Word và từng ảnh điểm danh trước khi bấm gửi.
               </p>
 
               <div className="space-y-3">
@@ -245,7 +245,7 @@ export function JournalReviewPage() {
                         {check.ready ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <AlertCircle className="h-4 w-4 text-amber-600" />}
                         <p className="font-medium">{check.label}</p>
                       </div>
-                      <Badge tone={check.ready ? "success" : "warning"}>{check.ready ? "OK" : "Thieu"}</Badge>
+              <Badge tone={check.ready ? "success" : "warning"}>{check.ready ? "OK" : "Thiếu"}</Badge>
                     </div>
                     {check.detail && <p className="mt-2 text-sm text-muted-foreground">{check.detail}</p>}
                     {check.missing.length > 0 && (
